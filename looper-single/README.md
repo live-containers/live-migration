@@ -25,6 +25,11 @@ Checkpoint the looper application:
 docker checkpoint create looper looper-cp1
 ```
 
+If we want to keep the container running we can use the ``--leave-running`` flag:
+```
+docker checkpoint create --leave-running looper cp1
+```
+
 Check again the container status (should be exitted):
 ```
 docker ps -a
