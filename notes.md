@@ -17,8 +17,3 @@ Error response from daemon: Cannot checkpoint container js-looper: runc did not 
 + It looks as though it might be a kernel error (mine being too new): https://github.com/checkpoint-restore/criu/issues/860
 + It also fails if I run a webserver in alpine
 
-### To-Do
-
-1. Get the simple server example to work
-2. Keep running option
-3. Be able to start from a different container
