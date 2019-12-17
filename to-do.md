@@ -4,3 +4,4 @@
         + In memory (not only HTML value)
         + DB
         + Redis DB
+    + 
