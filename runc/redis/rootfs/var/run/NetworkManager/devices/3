@@ -1,5 +1,0 @@
-[device]
-managed=true
-perm-hw-addr-fake=7E:DA:2F:F2:38:BF
-connection-uuid=be87e81a-cf44-4f02-9390-5465d336d225
-nm-owned=false
