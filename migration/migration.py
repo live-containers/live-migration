@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import ast
 import os
 import subprocess
 import shutil
@@ -20,14 +21,31 @@ def check_root():
 def usage():
     txt = "Usage: {} \n".format(sys.argv[0])
     txt += "\t--name <container id>\t\tname of the runC container\n"
-    txt += "\t--restore-dir <dir>\t\tscp-like path where to restore "
-    txt += "the container\n"
+    txt += "\t--image-path [dir]\t\tpath where to store the checkpoint files"
+    txt += "for non-diskless migrations\n" #default /tmp/img-path
+    #txt += "\t--hostname <host:port>
     #txt += "\t--container-path [dir|pwd]\t\tpath where the container image is\n"
-    txt += "\t--diskless [bool|false]\t\tperform a diskless migration\n" 
+    txt += "\t--diskless \t\tperform a diskless migration\n" 
     #txt += "[leave-running] [pre-copy|post-copy]\n"
     eprint(txt)
     sys.exit(1)
 
+"""
+=====
+parse_kwargs returns an object with the following parameters.
+=====
+
+- container-name: String (Reuired)
+        Container name 
+- image-path: Path (Default: /tmp/criu/<container-name>)
+        Directory to store checkpoint files if doing a non-diskless migration.
+- container-path: Path
+        Directory where the checkpointed container has the configuration files
+- page-server: Tuple (Host, Port)
+        Details of the page server to perform diskless/lazy migrations.
+- diskless: Bool 
+        If set, performs a diskless migration using /dev/shm
+"""
 def parse_kwargs(arg_list):
     ret = {}
     if "--name" not in arg_list:
@@ -36,10 +54,11 @@ def parse_kwargs(arg_list):
     try:
         index = arg_list.index("--name")
         ret["container-name"] = arg_list[index + 1]
-        tmp_out = subprocess.getoutput("sudo runc list -q").split('\n')
-        if ret["container-name"] not in tmp_out:
-            raise CustomException
-    except CustomException:
+        tmp_out = subprocess.getoutput("sudo runc list --format")
+        cont_list = ast.literal_eval(tmp_out)
+        kwargs["container-path"] = [i for i in ast.literal_eval(a) 
+                                    if i['id'] == name][0]["bundle"]
+    except IndexError:
         eprint("{} is not a running container!".format(
               ret["container-name"]))
         sys.exit(1)
@@ -54,54 +73,26 @@ def parse_kwargs(arg_list):
             ret["post-copy"] = 1
         else:
             usage()
-    if "--restore-dir" in arg_list:
-        # TODO implement remote migration
+    if "--image-path" in arg_list:
         try:
-            index = arg_list.index("--restore-dir")
-            ret["restore-dir"] = arg_list[index + 1]
-            ret["restore-type"] = "local"
-            if (ret["restore-dir"][-1] != "/"):
-                ret["restore-dir"] += "/"
-            ret["restore-parent"] = ret["restore-dir"].rsplit('/',2)[0]
-            if not os.path.exists(ret["restore-parent"]):
-                eprint("{} is not a valid restore path!".format(
-                      ret["restore-dir"]))
-                raise CustomException
-            if not os.path.exists(ret["restore-parent"] + "/config.json"):
-                tmp_str = "{} has not got the sufficient ".format(
-                        ret["container-path"])
-                tmp_str += "files to restore the container!"
-                eprint(tmp_str)
-                raise CustomException
-        except CustomException:
-            sys.exit(1)
-        except:
-            eprint("In the restore-dir command")
-            usage()
-    else:
-        eprint("Missing mandatory argument --restore-dir!")
-        usage()
-    if "--container-path" in arg_list:
-        try:
-            index = arg_list.index("--container-path")
-            ret["container-path"] = arg_list[index + 1]
-            if (ret["container-path"][-1] != "/"):
-                ret["container-path"] += "/"
-            if not os.path.exists(ret["container-path"]):
-                eprint("{} is not a valid restore path!".format(
-                      ret["restore-dir"]))
-                raise CustomException
-            if not os.path.exists(ret["container-path"] + "config.json"):
-                tmp_str = "{} has not got the sufficient ".format(
-                        ret["container-path"])
-                tmp_str += "files to restore the container!"
-                eprint(tmp_str)
-                raise CustomException
-        except CustomException:
-            sys.exit(1)
+            index = arg_list.index("--index-path")
+            ret["image-path"] = arg_list[index + 1]
+            if (ret["image-path"][-1] != "/"):
+                ret["image-path"] += "/"
         except:
             eprint("In the container path argument.")
             usage()
+    else:
+        ret["image-path"] = "/tmp/criu/{}/".format(ret["container-name"])
+        try:
+            os.makedirs(ret["image-path"])
+        except FileExistsError:
+            pass
+    if "--diskless" in arg_list:
+        index = arg_list.index("--diskless")
+        ret["diskless"] = True
+        if "page-server" not in ret:
+            ret["page-server"] = ("127.0.0.1", 1337)
     return ret
 
 def transfer_checkpoint(**kwargs):
@@ -117,17 +108,33 @@ def transfer_checkpoint(**kwargs):
             eprint("Couldn't transfer files. {}".format(e))
             sys.exit(1)
 
+def prepare_diskless_migration(*kwargs):
+    try:
+        os.mkdir("/dev/shm/criu-src-dir")
+        os.mkdir("/dev/shm/criu-dst-dir")
+        cmd = "criu page-server --images-dir {} --port {}".format(
+                "/dev/shm/criu-dst-dir", kwargs["page-server"][1])
+        p = subprocess.Popen(cmd, shell = True)
+        return p
+    except FileExistsError:
+        eprint("Environment not clean! Files in /dev/shm.")
+        sys.exit(1)
+
 def migration(**kwargs):
     # Checkpoint
-    cmd_cp = "sudo runc checkpoint {} ".format(kwargs["container-name"])
+    cmd_cp = "sudo runc checkpoint "
     cmd_rs = "sudo runc restore "
     if (kwargs["restore-type"] == "local"):
-        cmd_cp += " --image-path {} ".format(kwargs["restore-dir"])
-        cmd_rs += " --image-path {} ".format(kwargs["restore-dir"])
+        cmd_cp += " --image-path {}".format(kwargs["image-path"])
+        cmd_rs += " --image-path {}".format(kwargs["image-path"])
     else:
         # TODO remote migration
         #transfer_checkpoint(**kwargs)
         pass
+    if (kwargs["diskless"])
+        ps_p = prepare_diskless_migration(**kwargs)
+        cmd_cp += " --page-server {}:{}"
+    cmd_cp += " {}".format(kwargs["container-name"])
     print("Starting checkpoint with the following arguments:")
     print(kwargs)
     start = time.time()
@@ -137,7 +144,7 @@ def migration(**kwargs):
     cp_time = time.time()
     cmd_rs += "-d {}-restored &> /dev/null < /dev/null".format(
             kwargs["container-name"])
-    p = subprocess.Popen(cmd_rs, shell=True, cwd=kwargs["restore-parent"])
+    p = subprocess.Popen(cmd_rs, shell=True, cwd=kwargs["container-path"])
     p.wait()
     rt_time = time.time()
     print("Restore finished!")
