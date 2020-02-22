@@ -54,15 +54,16 @@ def parse_kwargs(arg_list):
     try:
         index = arg_list.index("--name")
         ret["container-name"] = arg_list[index + 1]
-        tmp_out = subprocess.getoutput("sudo runc list --format")
+        tmp_out = subprocess.getoutput("sudo runc list --format json")
         cont_list = ast.literal_eval(tmp_out)
-        kwargs["container-path"] = [i for i in ast.literal_eval(a) 
-                                    if i['id'] == name][0]["bundle"]
+        ret["container-path"] = [i for i in cont_list
+                            if i['id'] == ret["container-name"]][0]["bundle"]
     except IndexError:
         eprint("{} is not a running container!".format(
               ret["container-name"]))
         sys.exit(1)
-    except:
+    except Exception as e:
+        print(e)
         usage()
     if "pre-copy" in arg_list:
         ret["pre-copy"] = 1
@@ -91,8 +92,13 @@ def parse_kwargs(arg_list):
     if "--diskless" in arg_list:
         index = arg_list.index("--diskless")
         ret["diskless"] = True
+        # If diskless, override the image path. TODO check for possible mounts
+        # 1. /dev/shm/
+        ret["image-path"] = ("/dev/shm/criu-src-dir", "/dev/shm/criu-dst-dir")
         if "page-server" not in ret:
             ret["page-server"] = ("127.0.0.1", 1337)
+    else:
+        ret["diskless"] = False
     return ret
 
 def transfer_checkpoint(**kwargs):
@@ -108,41 +114,66 @@ def transfer_checkpoint(**kwargs):
             eprint("Couldn't transfer files. {}".format(e))
             sys.exit(1)
 
-def prepare_diskless_migration(*kwargs):
+def prepare_diskless_migration(**kwargs):
     try:
-        os.mkdir("/dev/shm/criu-src-dir")
-        os.mkdir("/dev/shm/criu-dst-dir")
+        os.mkdir(kwargs["image-path"][0])
+        os.mkdir(kwargs["image-path"][1])
         cmd = "criu page-server --images-dir {} --port {}".format(
-                "/dev/shm/criu-dst-dir", kwargs["page-server"][1])
+                kwargs["image-path"][1], kwargs["page-server"][1])
         p = subprocess.Popen(cmd, shell = True)
         return p
     except FileExistsError:
         eprint("Environment not clean! Files in /dev/shm.")
         sys.exit(1)
 
+def clean_env(**kwargs):
+    if (len(kwargs["image-path"]) == 2):
+        try:
+            shutil.rmtree(kwargs["image-path"][0])
+        except Exception as e:
+            print(e)
+        try:
+            shutil.rmtree(kwargs["image-path"][1])
+        except Exception as e:
+            print(e)
+    else:
+        if kwargs["image-path"].split('/')[1] == "tmp":
+            try:
+                shutil.rmtree(kwargs["image-path"])
+            except Exception as e:
+                print(e)
+
 def migration(**kwargs):
     # Checkpoint
     cmd_cp = "sudo runc checkpoint "
     cmd_rs = "sudo runc restore "
-    if (kwargs["restore-type"] == "local"):
+    if (len(kwargs["image-path"]) == 2):
+        cmd_cp += " --image-path {}".format(kwargs["image-path"][0])
+        cmd_rs += " --image-path {}".format(kwargs["image-path"][1])
+    else:
         cmd_cp += " --image-path {}".format(kwargs["image-path"])
         cmd_rs += " --image-path {}".format(kwargs["image-path"])
-    else:
-        # TODO remote migration
-        #transfer_checkpoint(**kwargs)
-        pass
-    if (kwargs["diskless"])
+    if (kwargs["diskless"]):
         ps_p = prepare_diskless_migration(**kwargs)
-        cmd_cp += " --page-server {}:{}"
+        cmd_cp += " --page-server {}:{}".format(*kwargs["page-server"])
     cmd_cp += " {}".format(kwargs["container-name"])
     print("Starting checkpoint with the following arguments:")
     print(kwargs)
+    print(cmd_cp)
+    print(cmd_rs)
     start = time.time()
     p = subprocess.Popen(cmd_cp, shell=True)
     p.wait()
     print("Checkpoint finished!")
+    if (kwargs["diskless"]):
+        try:
+            shutil.copytree(kwargs["image-path"][0], kwargs["image-path"][1])
+        except Exception as e:
+            print(e)
+            eprint("Can't copy from src to dst tmpfs!")
+            sys.exit(1)
     cp_time = time.time()
-    cmd_rs += "-d {}-restored &> /dev/null < /dev/null".format(
+    cmd_rs += " -d {}-restored &> /dev/null < /dev/null".format(
             kwargs["container-name"])
     p = subprocess.Popen(cmd_rs, shell=True, cwd=kwargs["container-path"])
     p.wait()
@@ -150,6 +181,9 @@ def migration(**kwargs):
     print("Restore finished!")
     print("Time elapsed: \n\t- Checkpoint: {}\n\t- Restore: {}".format(
           cp_time, rt_time))
+    print("Cleaning environment before shutdown!")
+    time.sleep(2)
+    clean_env(**kwargs)
 
 if __name__=="__main__":
     check_root()
