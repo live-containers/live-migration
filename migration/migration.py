@@ -186,6 +186,9 @@ def migration(**kwargs):
     print("Time elapsed: \n\t- Checkpoint: {}\n\t- Restore: {}".format(
           cp_time - start_time, rt_time - cp_time))
     print("\t- Total: {}".format(rt_time - start_time))
+    with open("local_benchmark.dat", 'a') as f:
+        f.write("{},{},{}\n".format(cp_time - start_time, rt_time - cp_time,
+                rt_time - start_time))
     print("Cleaning environment before shutdown!")
     time.sleep(2)
     clean_env(**kwargs)

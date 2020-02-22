@@ -13,3 +13,9 @@ Local Examples
 sudo ./migration.py --name eureka
 ```
 
+**2. Diskless Migration:**
++ Just change the invokation to the migration script
+```bash
+sudo ./migration.py --name eureka --diskless
+```
+
