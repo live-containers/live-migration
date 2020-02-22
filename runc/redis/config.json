@@ -58,7 +58,10 @@
 	"hooks": {
 		"prestart": [
 		{
-			"path": "/home/carlos/go/bin/netns"
+			"path": "/home/carlos/go/bin/netns",
+            "args": [
+                "--static-ip 172.19.0.23"
+            ]
 		}
 		]
 	},

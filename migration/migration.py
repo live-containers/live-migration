@@ -94,7 +94,7 @@ def parse_kwargs(arg_list):
         ret["diskless"] = True
         # If diskless, override the image path. TODO check for possible mounts
         # 1. /dev/shm/
-        ret["image-path"] = ("/dev/shm/criu-src-dir", "/dev/shm/criu-dst-dir")
+        ret["image-path"] = ("/dev/shm/criu-src-dir/", "/dev/shm/criu-dst-dir/")
         if "page-server" not in ret:
             ret["page-server"] = ("127.0.0.1", 1337)
     else:
@@ -122,7 +122,8 @@ def prepare_diskless_migration(**kwargs):
                 kwargs["image-path"][1], kwargs["page-server"][1])
         p = subprocess.Popen(cmd, shell = True)
         return p
-    except FileExistsError:
+    except FileExistsError as e:
+        print(e)
         eprint("Environment not clean! Files in /dev/shm.")
         sys.exit(1)
 
@@ -157,20 +158,23 @@ def migration(**kwargs):
         ps_p = prepare_diskless_migration(**kwargs)
         cmd_cp += " --page-server {}:{}".format(*kwargs["page-server"])
     cmd_cp += " {}".format(kwargs["container-name"])
-    print("Starting checkpoint with the following arguments:")
-    print(kwargs)
-    print(cmd_cp)
-    print(cmd_rs)
-    start = time.time()
+#    print("Starting checkpoint with the following arguments:")
+#    print(kwargs)
+#    print(cmd_cp)
+#    print(cmd_rs)
+    start_time = time.time()
     p = subprocess.Popen(cmd_cp, shell=True)
     p.wait()
     print("Checkpoint finished!")
     if (kwargs["diskless"]):
         try:
-            shutil.copytree(kwargs["image-path"][0], kwargs["image-path"][1])
+            for _file in os.listdir(kwargs["image-path"][0]):
+                shutil.copy("{}{}".format(kwargs["image-path"][0], _file),
+                            kwargs["image-path"][1])
         except Exception as e:
             print(e)
             eprint("Can't copy from src to dst tmpfs!")
+            clean_env(**kwargs)
             sys.exit(1)
     cp_time = time.time()
     cmd_rs += " -d {}-restored &> /dev/null < /dev/null".format(
@@ -180,7 +184,8 @@ def migration(**kwargs):
     rt_time = time.time()
     print("Restore finished!")
     print("Time elapsed: \n\t- Checkpoint: {}\n\t- Restore: {}".format(
-          cp_time, rt_time))
+          cp_time - start_time, rt_time - cp_time))
+    print("\t- Total: {}".format(rt_time - start_time))
     print("Cleaning environment before shutdown!")
     time.sleep(2)
     clean_env(**kwargs)
