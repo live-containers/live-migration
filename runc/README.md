@@ -25,7 +25,7 @@ exit
 
 ### Specific Examples
 
-1. [Redis Server](https://github.com/BU-NU-CLOUD-F19/Interoperable_Container_Runtime/wiki/Configuring-network-with-runc:-redis-container): first generate the root filesystem using the command defined below with `redis` as `<image-tag>`.
+1. [Redis Server](https://github.com/BU-NU-CLOUD-F19/Interoperable_Container_Runtime/wiki/Configuring-network-with-runc:-redis-container): first generate the root filesystem using the command defined below with `redis` as `<image-tag>`. However, don't generate the default spec, instead use the provided `config.json`.
 ```
     cd ~/criu-demos/runc/redis && sudo runc run -d eureka &> /dev/null < /dev/null
     sudo netns ls
