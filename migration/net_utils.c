@@ -171,6 +171,7 @@ int sftp_copy(ssh_session session)
     sftp_session sftp;
     int rc;
 
+    sftp = sftp_new(session);
     /* Allocate SFTP Session */
     if (sftp == NULL)
     {
@@ -273,12 +274,14 @@ int main()
     }
 
     /* Execute Remote Command */
+    /*
     char *command = "cat setup.sh";
     if (run_remote_command(session, command) != SSH_OK)
     {
         fprintf(stderr, "Error executing remote command!\n");
         exit(-1);
     }
+    */
 
     if (sftp_copy(session) != SSH_OK)
     {
