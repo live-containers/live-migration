@@ -1,6 +1,10 @@
+#include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
 #include <libssh/libssh.h>
+#include <libssh/sftp.h>
 
 #define TRUST_UNKNOWN_HOSTS 1
 
@@ -97,7 +101,7 @@ int authenticate_pubkey(ssh_session session)
     return rc;
 }
 
-int show_remote_processes(ssh_session session)
+int run_remote_command(ssh_session session, char *command)
 {
     ssh_channel channel;
     int rc;
@@ -123,7 +127,7 @@ int show_remote_processes(ssh_session session)
     }
 
     /* Execute Remote Command */
-    rc = ssh_channel_request_exec(channel, "ps aux");
+    rc = ssh_channel_request_exec(channel, command);
     if (rc != SSH_OK)
     {
         fprintf(stderr, "Error executing remote command.\n");
@@ -159,6 +163,68 @@ int show_remote_processes(ssh_session session)
     ssh_channel_send_eof(channel);
     ssh_channel_close(channel);
     ssh_channel_free(channel);
+    return SSH_OK;
+}
+
+int sftp_copy(ssh_session session)
+{
+    sftp_session sftp;
+    int rc;
+
+    /* Allocate SFTP Session */
+    if (sftp == NULL)
+    {
+        fprintf(stderr, "Error allocating SFTP session: %s\n",
+                ssh_get_error(session));
+        return SSH_ERROR;
+    }
+
+    /* Initialize SFTP Client */
+    rc = sftp_init(sftp);
+    if (rc != SSH_OK)
+    {
+        fprintf(stderr, "Error initializing SFTP session: %d\n",
+                sftp_get_error(sftp));
+        sftp_free(sftp);
+        return rc;
+    }
+
+    /* Create Test File */
+    int access_type = O_WRONLY | O_CREAT | O_TRUNC;
+    sftp_file file;
+    const char *hello = "Hello, World!\n";
+    int length = strlen(hello);
+    int nwritten;
+
+    file = sftp_open(sftp, "hello_world.txt", access_type, S_IRWXU);
+    if (file == NULL)
+    {
+        fprintf(stderr, "Can't open file for writing: %s\n",
+                ssh_get_error(session));
+        sftp_free(sftp);
+        return SSH_ERROR;
+    }
+
+    nwritten = sftp_write(file, hello, length);
+    if (nwritten != length)
+    {
+        fprintf(stderr, "Can't write data to remote file: %s\n",
+                ssh_get_error(session));
+        sftp_close(file);
+        sftp_free(sftp);
+        return SSH_ERROR;
+    }
+
+    rc = sftp_close(file);
+    if (rc != SSH_OK)
+    {
+        fprintf(stderr, "Can't close remote file: %s\n",
+                ssh_get_error(session));
+        sftp_free(sftp);
+        return rc;
+    }
+
+    sftp_free(sftp);
     return SSH_OK;
 }
 
@@ -200,17 +266,23 @@ int main()
         ssh_free(session);
         exit(-1);
     }
-    /* TODO: Implement more authentication methods 
-     * this requires the keys to be pre-shared. */
+    /* FIXME this requires the keys to be pre-shared. */
     if (authenticate_pubkey(session) != SSH_AUTH_SUCCESS)
     {
         exit(-1);
     }
 
     /* Execute Remote Command */
-    if (show_remote_processes(session) != SSH_OK)
+    char *command = "cat setup.sh";
+    if (run_remote_command(session, command) != SSH_OK)
     {
         fprintf(stderr, "Error executing remote command!\n");
+        exit(-1);
+    }
+
+    if (sftp_copy(session) != SSH_OK)
+    {
+        fprintf(stderr, "Error copying files over SFTP!\n");
         exit(-1);
     }
 
