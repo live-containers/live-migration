@@ -67,6 +67,36 @@ int verify_host(ssh_session session)
     return 0;
 }
 
+int authenticate_pubkey(ssh_session session)
+{
+    int rc;
+    ssh_key privkey;
+    char *key_path = "/home/csegarra/.ssh/id_rsa";
+
+    /* Load Private Key */
+    rc = ssh_pki_import_privkey_file(key_path, NULL, NULL, NULL, &privkey);
+    if (rc != SSH_OK)
+    {
+        fprintf(stderr, "Error loading private key!\n");
+        ssh_key_free(privkey);
+        return rc;
+    }
+
+    /* Authenticate Using Private Key */
+    rc = ssh_userauth_publickey(session, NULL, privkey);
+    if (rc == SSH_AUTH_ERROR)
+    {
+        fprintf(stderr, "Authentication failed with error: %s\n",
+                ssh_get_error(session));
+        ssh_key_free(privkey);
+        return SSH_AUTH_ERROR;
+    }
+
+    /* Free Resources and Return */
+    ssh_key_free(privkey);
+    return rc;
+}
+
 int show_remote_processes(ssh_session session)
 {
     ssh_channel channel;
@@ -74,13 +104,20 @@ int show_remote_processes(ssh_session session)
     char buffer[256];
     int nbytes;
 
+    if (ssh_is_connected(session) == 1)
+        fprintf(stdout, "We are connected!\n");
+
     /* Open a new SSH Channel */
     channel = ssh_channel_new(session);
     if (channel == NULL)
+    {
+        fprintf(stderr, "Error allocating new SSH channel.\n");
         return SSH_ERROR;
+    }
     rc = ssh_channel_open_session(channel);
     if (rc != SSH_OK)
     {
+        fprintf(stderr, "Error opening new SSH channel.\n");
         ssh_channel_free(channel);
         return rc;
     }
@@ -89,6 +126,7 @@ int show_remote_processes(ssh_session session)
     rc = ssh_channel_request_exec(channel, "ps aux");
     if (rc != SSH_OK)
     {
+        fprintf(stderr, "Error executing remote command.\n");
         ssh_channel_close(channel);
         ssh_channel_free(channel);
         return rc;
@@ -98,12 +136,16 @@ int show_remote_processes(ssh_session session)
     nbytes = ssh_channel_read(channel, buffer, sizeof buffer, 0);
     while(nbytes > 0)
     {
-        if (fprintf(stdout, buffer, nbytes) != (unsigned int) nbytes)
+        fprintf(stdout, "%s", buffer);
+        /* FIXME check for errors
+        if (fprintf(stdout, "%s", buffer) != (unsigned int) nbytes)
         {
+            fprintf(stderr, "Error printing results.\n");
             ssh_channel_close(channel);
             ssh_channel_free(channel);
             return SSH_ERROR;
         }
+        */
         nbytes = ssh_channel_read(channel, buffer, sizeof buffer, 0);
     }
     
@@ -126,15 +168,20 @@ int main()
     int verbosity = SSH_LOG_PROTOCOL;
     int port = 22;
     char *host = "192.168.56.103";
+    char *user = "carlos";
     int rc;
+    char *known_hosts = "~/.ssh/known_hosts";
 
     if (session == NULL)
         exit(-1);
     
     /* Set SSH Connection Options */
     ssh_options_set(session, SSH_OPTIONS_HOST, host);
+    ssh_options_set(session, SSH_OPTIONS_USER, user);
     ssh_options_set(session, SSH_OPTIONS_LOG_VERBOSITY, &verbosity);
     ssh_options_set(session, SSH_OPTIONS_PORT, &port);
+    ssh_options_set(session, SSH_OPTIONS_KNOWNHOSTS, known_hosts);
+    ssh_options_set(session, SSH_OPTIONS_GLOBAL_KNOWNHOSTS, known_hosts);
 
     /* Connect to Remote Server */
     rc = ssh_connect(session);
@@ -153,8 +200,12 @@ int main()
         ssh_free(session);
         exit(-1);
     }
-    /* TO-DO: Implement Client-Side Authentication
-     * see here: http://api.libssh.org/master/libssh_tutor_guided_tour.html */
+    /* TODO: Implement more authentication methods 
+     * this requires the keys to be pre-shared. */
+    if (authenticate_pubkey(session) != SSH_AUTH_SUCCESS)
+    {
+        exit(-1);
+    }
 
     /* Execute Remote Command */
     if (show_remote_processes(session) != SSH_OK)
