@@ -1,13 +1,10 @@
-#include <fcntl.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <libssh/libssh.h>
-#include <libssh/sftp.h>
+#include "net_utils.h"
 
-#define TRUST_UNKNOWN_HOSTS 1
-
+/*
+ * Check whether the current session is established with a known host,
+ * i.e. a host whose key is in the known_hosts file. If not, the current
+ * behaviour is to add said key to the file, but it can change.
+ */
 int verify_host(ssh_session session)
 {
     enum ssh_known_hosts_e state;
@@ -166,9 +163,12 @@ int run_remote_command(ssh_session session, char *command)
     return SSH_OK;
 }
 
-int sftp_copy(ssh_session session)
+int sftp_copy(ssh_session session, char *dst_path, char *src_path)
 {
     sftp_session sftp;
+    struct stat src_stat;
+    sftp_file dst_file;
+    FILE *src_file;
     int rc;
 
     sftp = sftp_new(session);
@@ -191,11 +191,11 @@ int sftp_copy(ssh_session session)
     }
 
     /* Create Test File */
+    /*
     int access_type = O_WRONLY | O_CREAT | O_TRUNC;
     sftp_file file;
     const char *hello = "Hello, World!\n";
     int length = strlen(hello);
-    int nwritten;
 
     file = sftp_open(sftp, "hello_world.txt", access_type, S_IRWXU);
     if (file == NULL)
@@ -205,18 +205,55 @@ int sftp_copy(ssh_session session)
         sftp_free(sftp);
         return SSH_ERROR;
     }
+    */
 
-    nwritten = sftp_write(file, hello, length);
-    if (nwritten != length)
+    /* Open remote and local file.
+     * First flag can be: O_WRONLY, O_RDONLY, or O_RDWR
+     * Second flag can be: O_CREAT to create a new file
+     * Third flag can be (if second set): O_EXCL (error if file exists)
+     *                                    O_TRUNC (truncate if it exists)
+    */
+    int access_type = O_WRONLY | O_CREAT | O_TRUNC;
+    src_file = fopen(src_path, "r");
+    if (src_file == NULL)
     {
-        fprintf(stderr, "Can't write data to remote file: %s\n",
+        fprintf(stderr, "Can't open the source file!\n");
+        sftp_free(sftp);
+        return SSH_ERROR;
+    }
+    /* Read src file permissions, the new file will have the same ones. */
+    if (stat(src_path, &src_stat) < 0) {
+        fprintf(stderr, "Can't read the source file's permission!\n");
+        sftp_free(sftp);
+        return SSH_ERROR;
+    }
+    dst_file = sftp_open(sftp, dst_path, access_type, src_stat.st_mode);
+    if (dst_file == NULL)
+    {
+        fprintf(stderr, "Can't open the destination file: %s\n",
                 ssh_get_error(session));
-        sftp_close(file);
         sftp_free(sftp);
         return SSH_ERROR;
     }
 
-    rc = sftp_close(file);
+    /* Transfer data in chunks. */
+    size_t nread, nwritten;
+    char buffer[MAX_XFER_BUF_SIZE];
+    while ((nread = fread(buffer, sizeof(char), MAX_XFER_BUF_SIZE, src_file)) > 0)
+    {
+        nwritten = sftp_write(dst_file, buffer, nread);
+        if (nwritten != nread)
+        {
+            fprintf(stderr, "Can't write data to remote file: %s\n",
+                    ssh_get_error(session));
+            sftp_close(dst_file);
+            sftp_free(sftp);
+            return SSH_ERROR;
+        }
+    }
+
+    fclose(src_file);
+    rc = sftp_close(dst_file);
     if (rc != SSH_OK)
     {
         fprintf(stderr, "Can't close remote file: %s\n",
@@ -283,7 +320,11 @@ int main()
     }
     */
 
-    if (sftp_copy(session) != SSH_OK)
+    //char *src_path = "/home/csegarra/Work/VIRT/criu-lm/migration/hello_world.txt";
+    //char *dst_path = "hello_world.txt";
+    char *src_path = "/home/csegarra/Work/VIRT/dissemination/figures/local-benchmark/local_benchmark.pdf";
+    char *dst_path = "Desktop/hello_world.pdf";
+    if (sftp_copy(session, dst_path, src_path) != SSH_OK)
     {
         fprintf(stderr, "Error copying files over SFTP!\n");
         exit(-1);
