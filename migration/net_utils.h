@@ -1,3 +1,5 @@
+#ifndef NET_UTILS_H
+#define NET_UTILS_H
 #include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -22,3 +24,5 @@ int verify_host(ssh_session session);
 int authenticate_pubkey(ssh_session session);
 int run_remote_command(ssh_session session, char *command);
 int sftp_copy(ssh_session session, char *dst_path, char *src_path);
+
+#endif /* NET_UTILS_H */
