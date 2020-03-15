@@ -1,6 +1,7 @@
 #include "migration.h"
 
 struct migration_args {
+    ssh_session session;
     char *name;
     char *src_image_path;
     char *dst_image_path;
@@ -75,20 +76,21 @@ int parse_args(int argc, char *argv[], struct migration_args *args)
 int prepare_migration(struct migration_args *args)
 {
     int rc;
+    /* Make local dir for checkpoint files */
     rc = mkdir(args->src_image_path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     if (rc < 0)
     {
         printf("Error creating local image path in SHM!\n");
         return 1;
     }
-    if (args->dst_host == "127.0.0.1")
-        rc = mkdir(args->dst_image_path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
     return 0;
 }
 
 int migration(struct migration_args *args)
 {
-    char *cmd_cp, *cmd_rs;
+    char *cmd_cp = NULL;
+    char *cmd_rs = NULL;
     char *fmt_cp = "sudo runc checkpoint --image-path %s --page-server %s:%s %s";
     char *fmt_rs = "sudo runc checkpoint --image-path %s %s-restored &> /dev/null < /dev/null";
     sprintf(cmd_cp, fmt_cp, args->src_image_path, args->page_server_host,
@@ -115,6 +117,13 @@ int main(int argc, char *argv[])
         return 1;
     }
     parse_args(argc, argv, args);
-    migration(args);
+    args->session = ssh_start("192.168.56.103", "carlos");
+    char *command = "cat setup.sh";
+    if (ssh_remote_command(args->session, command) != SSH_OK)
+    {
+        fprintf(stderr, "Error executing remote command!\n");
+        exit(-1);
+    }
+    //migration(args);
     return 0;
 }

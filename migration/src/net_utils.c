@@ -45,8 +45,10 @@ static int verify_host(ssh_session session)
                 /* Fall in the SSH_KNOWN_HOSTS_UNKNOWN case */
             }
             else
+            {
                 ssh_clean_pubkey_hash(&hash);
                 return -1;
+            }
 
         case SSH_KNOWN_HOSTS_UNKNOWN:
             ssh_clean_pubkey_hash(&hash);
@@ -271,7 +273,6 @@ int sftp_copy_file(ssh_session session, char *dst_path, char *src_path)
 int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path)
 {
     sftp_session sftp;
-    sftp_file dst_file;
     int rc;
 
     sftp = sftp_new(session);
@@ -404,23 +405,20 @@ ssh_session ssh_start(char *host, char *user)
     return session;
 }
 
+/*
 int main()
 {
     ssh_session session = ssh_start("192.168.56.103", "carlos");
 
-    /* Execute Remote Command */
-    /*
     char *command = "cat setup.sh";
     if (ssh_remote_command(session, command) != SSH_OK)
     {
         fprintf(stderr, "Error executing remote command!\n");
         exit(-1);
     }
-    */
 
     //char *src_path = "/home/csegarra/Work/VIRT/criu-lm/migration/hello_world.txt";
     //char *dst_path = "hello_world.txt";
-    /*
     char *src_path = "/home/csegarra/Work/VIRT/dissemination/figures/local-benchmark/local_benchmark.pdf";
     char *dst_path = "Desktop/hello_world.pdf";
     if (sftp_copy_file(session, dst_path, src_path) != SSH_OK)
@@ -428,7 +426,6 @@ int main()
         fprintf(stderr, "Error copying files over SFTP!\n");
         exit(-1);
     }
-    */
     char *src_path = "test";
     char *dst_path = "lala";
     if (sftp_copy_dir(session, dst_path, src_path) != SSH_OK)
@@ -440,3 +437,4 @@ int main()
     ssh_free(session);
     return 0;
 }
+*/
