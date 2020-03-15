@@ -5,7 +5,7 @@
  * i.e. a host whose key is in the known_hosts file. If not, the current
  * behaviour is to add said key to the file, but it can change.
  */
-int verify_host(ssh_session session)
+static int verify_host(ssh_session session)
 {
     enum ssh_known_hosts_e state;
     unsigned char *hash = NULL;
@@ -36,7 +36,7 @@ int verify_host(ssh_session session)
             break;
 
         case SSH_KNOWN_HOSTS_NOT_FOUND:
-            fprintf(stderr, "Could not find the key in the hosts file.\n");
+            fprintf(stderr, "verify_host: Could not find the key in the hosts file.\n");
             if (TRUST_UNKNOWN_HOSTS)
             {
                 fprintf(stderr, "WARNING: Adding key to file.\n");
@@ -53,13 +53,13 @@ int verify_host(ssh_session session)
             rc = ssh_session_update_known_hosts(session);
             if (rc < 0)
             {
-                fprintf(stderr, "Error updating known hosts file!\n");
+                fprintf(stderr, "verify_host: Error updating known hosts file!\n");
                 return -1;
             }
             break;
 
         default:
-            fprintf(stderr, "Can't handle case: %i in verify_host!\n",
+            fprintf(stderr, "verify_host: Can't handle case: %i in verify_host!\n",
                     state);
             return -1;
     }
@@ -68,7 +68,7 @@ int verify_host(ssh_session session)
     return 0;
 }
 
-int authenticate_pubkey(ssh_session session)
+static int authenticate_pubkey(ssh_session session)
 {
     int rc;
     ssh_key privkey;
@@ -78,7 +78,7 @@ int authenticate_pubkey(ssh_session session)
     rc = ssh_pki_import_privkey_file(key_path, NULL, NULL, NULL, &privkey);
     if (rc != SSH_OK)
     {
-        fprintf(stderr, "Error loading private key!\n");
+        fprintf(stderr, "authenticate_pubkey: Error loading private key!\n");
         ssh_key_free(privkey);
         return rc;
     }
@@ -87,7 +87,7 @@ int authenticate_pubkey(ssh_session session)
     rc = ssh_userauth_publickey(session, NULL, privkey);
     if (rc == SSH_AUTH_ERROR)
     {
-        fprintf(stderr, "Authentication failed with error: %s\n",
+        fprintf(stderr, "authenticate_pubkey: Authentication failed with error: %s\n",
                 ssh_get_error(session));
         ssh_key_free(privkey);
         return SSH_AUTH_ERROR;
@@ -98,7 +98,7 @@ int authenticate_pubkey(ssh_session session)
     return rc;
 }
 
-int run_remote_command(ssh_session session, char *command)
+int ssh_remote_command(ssh_session session, char *command)
 {
     ssh_channel channel;
     int rc;
@@ -112,13 +112,13 @@ int run_remote_command(ssh_session session, char *command)
     channel = ssh_channel_new(session);
     if (channel == NULL)
     {
-        fprintf(stderr, "Error allocating new SSH channel.\n");
+        fprintf(stderr, "ssh_remote_command: Error allocating new SSH channel.\n");
         return SSH_ERROR;
     }
     rc = ssh_channel_open_session(channel);
     if (rc != SSH_OK)
     {
-        fprintf(stderr, "Error opening new SSH channel.\n");
+        fprintf(stderr, "ssh_remote_command: Error opening new SSH channel.\n");
         ssh_channel_free(channel);
         return rc;
     }
@@ -127,7 +127,7 @@ int run_remote_command(ssh_session session, char *command)
     rc = ssh_channel_request_exec(channel, command);
     if (rc != SSH_OK)
     {
-        fprintf(stderr, "Error executing remote command.\n");
+        fprintf(stderr, "ssh_remote_command: Error executing remote command.\n");
         ssh_channel_close(channel);
         ssh_channel_free(channel);
         return rc;
@@ -163,49 +163,15 @@ int run_remote_command(ssh_session session, char *command)
     return SSH_OK;
 }
 
-int sftp_copy(ssh_session session, char *dst_path, char *src_path)
+/* Low-level helper function to transfer a specific file by chunks.
+ * TODO how could we leverage compression in this case?
+ */
+static int sftp_xfer_file(sftp_session sftp, char *dst_path, char *src_path)
 {
-    sftp_session sftp;
+    FILE *src_file;
     struct stat src_stat;
     sftp_file dst_file;
-    FILE *src_file;
     int rc;
-
-    sftp = sftp_new(session);
-    /* Allocate SFTP Session */
-    if (sftp == NULL)
-    {
-        fprintf(stderr, "Error allocating SFTP session: %s\n",
-                ssh_get_error(session));
-        return SSH_ERROR;
-    }
-
-    /* Initialize SFTP Client */
-    rc = sftp_init(sftp);
-    if (rc != SSH_OK)
-    {
-        fprintf(stderr, "Error initializing SFTP session: %d\n",
-                sftp_get_error(sftp));
-        sftp_free(sftp);
-        return rc;
-    }
-
-    /* Create Test File */
-    /*
-    int access_type = O_WRONLY | O_CREAT | O_TRUNC;
-    sftp_file file;
-    const char *hello = "Hello, World!\n";
-    int length = strlen(hello);
-
-    file = sftp_open(sftp, "hello_world.txt", access_type, S_IRWXU);
-    if (file == NULL)
-    {
-        fprintf(stderr, "Can't open file for writing: %s\n",
-                ssh_get_error(session));
-        sftp_free(sftp);
-        return SSH_ERROR;
-    }
-    */
 
     /* Open remote and local file.
      * First flag can be: O_WRONLY, O_RDONLY, or O_RDWR
@@ -217,21 +183,28 @@ int sftp_copy(ssh_session session, char *dst_path, char *src_path)
     src_file = fopen(src_path, "r");
     if (src_file == NULL)
     {
-        fprintf(stderr, "Can't open the source file!\n");
+        fprintf(stderr, "sftp_xfer_file: Can't open the source file!\n");
         sftp_free(sftp);
         return SSH_ERROR;
     }
     /* Read src file permissions, the new file will have the same ones. */
     if (stat(src_path, &src_stat) < 0) {
-        fprintf(stderr, "Can't read the source file's permission!\n");
+        fprintf(stderr, "sftp_xfer_file: Can't read the source file's permission!\n");
         sftp_free(sftp);
+        return SSH_ERROR;
+    }
+    /* If we are trying to copy a directory, do nothing. */
+    if (!S_ISREG(src_stat.st_mode))
+    {
+        fprintf(stderr, "sftp_xfer_file: Trying to transfer a directory: %s\n",
+                src_path);
         return SSH_ERROR;
     }
     dst_file = sftp_open(sftp, dst_path, access_type, src_stat.st_mode);
     if (dst_file == NULL)
     {
-        fprintf(stderr, "Can't open the destination file: %s\n",
-                ssh_get_error(session));
+        fprintf(stderr, "sftp_xfer_file: Can't open the destination file: %d\n",
+                sftp_get_error(sftp));
         sftp_free(sftp);
         return SSH_ERROR;
     }
@@ -244,8 +217,8 @@ int sftp_copy(ssh_session session, char *dst_path, char *src_path)
         nwritten = sftp_write(dst_file, buffer, nread);
         if (nwritten != nread)
         {
-            fprintf(stderr, "Can't write data to remote file: %s\n",
-                    ssh_get_error(session));
+            fprintf(stderr, "sftp_xfer_file: Can't write data to remote file: %d\n",
+                    sftp_get_error(sftp));
             sftp_close(dst_file);
             sftp_free(sftp);
             return SSH_ERROR;
@@ -256,29 +229,147 @@ int sftp_copy(ssh_session session, char *dst_path, char *src_path)
     rc = sftp_close(dst_file);
     if (rc != SSH_OK)
     {
-        fprintf(stderr, "Can't close remote file: %s\n",
-                ssh_get_error(session));
+        fprintf(stderr, "sftp_xfer_file: Can't close remote file: %d\n",
+                sftp_get_error(sftp));
         sftp_free(sftp);
         return rc;
+    }
+    return SSH_OK;
+}
+
+int sftp_copy_file(ssh_session session, char *dst_path, char *src_path)
+{
+    sftp_session sftp;
+    int rc;
+
+    sftp = sftp_new(session);
+    /* Allocate SFTP Session */
+    if (sftp == NULL)
+    {
+        fprintf(stderr, "sftp_copy_file: Error allocating SFTP session: %s\n",
+                ssh_get_error(session));
+        return SSH_ERROR;
+    }
+
+    /* Initialize SFTP Client */
+    rc = sftp_init(sftp);
+    if (rc != SSH_OK)
+    {
+        fprintf(stderr, "sftp_copy_file: Error initializing SFTP session: %d\n",
+                sftp_get_error(sftp));
+        sftp_free(sftp);
+        return rc;
+    }
+
+    if (sftp_xfer_file(sftp, dst_path, src_path) != SSH_OK)
+        return SSH_ERROR;
+
+    sftp_free(sftp);
+    return SSH_OK;
+}
+
+int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path)
+{
+    sftp_session sftp;
+    sftp_file dst_file;
+    int rc;
+
+    sftp = sftp_new(session);
+    /* Allocate SFTP Session */
+    if (sftp == NULL)
+    {
+        fprintf(stderr, "sftp_copy_dir: Error allocating SFTP session: %s\n",
+                ssh_get_error(session));
+        return SSH_ERROR;
+    }
+
+    /* Initialize SFTP Client */
+    rc = sftp_init(sftp);
+    if (rc != SSH_OK)
+    {
+        fprintf(stderr, "sftp_copy_dir: Error initializing SFTP session: %d\n",
+                sftp_get_error(sftp));
+        sftp_free(sftp);
+        return rc;
+    }
+
+    /* Iterate over source directory. */
+    DIR *d;
+    struct dirent *src_dir;
+    //struct stat src_stat;
+    d = opendir(src_path);
+    if (d)
+    {
+        /* Create remote copy of directory. */
+        if (sftp_mkdir(sftp, dst_path, 0755) != 0)
+        {
+            fprintf(stderr, "sftp_copy_dir: Error creating remore directory %d\n",
+                    sftp_get_error(sftp));
+            sftp_free(sftp);
+            return SSH_ERROR;
+        }
+        char resolved_path[PATH_MAX + 1];
+        char src_rel_path[PATH_MAX + 1], dst_rel_path[PATH_MAX + 1];
+        memset(src_rel_path, '\0', PATH_MAX + 1);
+        memset(dst_rel_path, '\0', PATH_MAX + 1);
+        memset(resolved_path, '\0', PATH_MAX + 1);
+        while ((src_dir = readdir(d)) != NULL)
+        {
+            if (src_dir->d_type == DT_REG)
+            {
+                /* Generate full paths */
+                strncpy(src_rel_path, src_path, strlen(src_path));
+                strcat(src_rel_path, "/");
+                strcat(src_rel_path, src_dir->d_name);
+                strncpy(dst_rel_path, dst_path, strlen(dst_path));
+                strcat(dst_rel_path, "/");
+                strcat(dst_rel_path, src_dir->d_name);
+                if (realpath(src_rel_path, resolved_path) == NULL)
+                {
+                    fprintf(stderr, "sftp_copy_dir: Error obtaining file's real path: %s\n",
+                            src_dir->d_name);
+                    sftp_free(sftp);
+                    return SSH_ERROR;
+                }
+                if (sftp_xfer_file(sftp, dst_rel_path, resolved_path) != SSH_OK)
+                {
+                    fprintf(stderr, "sftp_copy_dir: error copying %s to %s\n. %i\n",
+                            resolved_path, dst_rel_path, sftp_get_error(sftp));
+                    sftp_free(sftp);
+                    return SSH_ERROR;
+                }
+                memset(src_rel_path, '\0', PATH_MAX + 1);
+                memset(dst_rel_path, '\0', PATH_MAX + 1);
+                memset(resolved_path, '\0', PATH_MAX + 1);
+            }
+        }
+        closedir(d);
+    }
+    else
+    {
+        fprintf(stderr, "sftp_copy_dir: Error listing source directory!\n");
+        sftp_free(sftp);
+        return SSH_ERROR;
     }
 
     sftp_free(sftp);
     return SSH_OK;
 }
 
-int main()
+ssh_session ssh_start(char *host, char *user)
 {
     ssh_session session = ssh_new();
     int verbosity = SSH_LOG_PROTOCOL;
     int port = 22;
-    char *host = "192.168.56.103";
-    char *user = "carlos";
     int rc;
     char *known_hosts = "~/.ssh/known_hosts";
 
     if (session == NULL)
-        exit(-1);
-    
+    {
+        printf("Error allocating SSH Session!\n");
+        exit(1);
+    }
+
     /* Set SSH Connection Options */
     ssh_options_set(session, SSH_OPTIONS_HOST, host);
     ssh_options_set(session, SSH_OPTIONS_USER, user);
@@ -291,7 +382,7 @@ int main()
     rc = ssh_connect(session);
     if (rc != SSH_OK)
     {
-        fprintf(stderr, "Error connecting to %s: %s\n",
+        fprintf(stderr, "ssh_start: Error connecting to %s: %s\n",
                 host, ssh_get_error(session));
         ssh_free(session);
         exit(-1);
@@ -310,10 +401,17 @@ int main()
         exit(-1);
     }
 
+    return session;
+}
+
+int main()
+{
+    ssh_session session = ssh_start("192.168.56.103", "carlos");
+
     /* Execute Remote Command */
     /*
     char *command = "cat setup.sh";
-    if (run_remote_command(session, command) != SSH_OK)
+    if (ssh_remote_command(session, command) != SSH_OK)
     {
         fprintf(stderr, "Error executing remote command!\n");
         exit(-1);
@@ -322,11 +420,20 @@ int main()
 
     //char *src_path = "/home/csegarra/Work/VIRT/criu-lm/migration/hello_world.txt";
     //char *dst_path = "hello_world.txt";
+    /*
     char *src_path = "/home/csegarra/Work/VIRT/dissemination/figures/local-benchmark/local_benchmark.pdf";
     char *dst_path = "Desktop/hello_world.pdf";
-    if (sftp_copy(session, dst_path, src_path) != SSH_OK)
+    if (sftp_copy_file(session, dst_path, src_path) != SSH_OK)
     {
         fprintf(stderr, "Error copying files over SFTP!\n");
+        exit(-1);
+    }
+    */
+    char *src_path = "test";
+    char *dst_path = "lala";
+    if (sftp_copy_dir(session, dst_path, src_path) != SSH_OK)
+    {
+        fprintf(stderr, "Error copying dir over SFTP!\n");
         exit(-1);
     }
 

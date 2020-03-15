@@ -2,17 +2,18 @@
 
 struct migration_args {
     char *name;
-    char *image_path;
-    int diskless;
+    char *src_image_path;
+    char *dst_image_path;
+    char *dst_host;
+    char *page_server_host;
+    char *page_server_port;
 };
-
-static int file_name_flag;
 
 int usage(char *file_name)
 {
     printf("Usage: %s\n", file_name);
-    printf("\t--name <container id>\t\tname of the runC container\n");
-    printf("\t--image-path [dir]\t\tpath where to store the checkpoint files");
+    printf("\t--name <container id>\tname of the runC container\n");
+    printf("\t--image-path [dir]\tpath where to store the checkpoint files");
     printf("for non-diskless migrations\n"); //default /tmp/img-path
     printf("\t--diskless \t\tperform a diskless migration\n" );
     //txt += "\t--hostname <host:port>
@@ -30,10 +31,9 @@ int parse_args(int argc, char *argv[], struct migration_args *args)
     {
         static struct option long_options[] = 
         {
-            {"diskless", no_argument, 0, 'd'},
-            {"name", required_argument, &file_name_flag, 1},
-            {"image-path", optional_argument, 0, 'i'},
-            {"help", optional_argument, 0, 'h'},
+            {"name", required_argument, 0, 0},
+            {"dst-host", required_argument, 0, 1},
+            {"help", no_argument, 0, 99},
             {0, 0, 0, 0}
         };
         int option_index;
@@ -43,23 +43,15 @@ int parse_args(int argc, char *argv[], struct migration_args *args)
         switch (c)
         {
             case 0:
-                if (optarg)
-                {
-                    args->name = optarg;
-                    break;
-                }
-                else
-                    usage(argv[0]);
+                // FIXME check if container exists
+                args->name = optarg;
+                break;
             
-            case 'd':
-                args->diskless = 1;
+            case 1:
+                args->dst_host = optarg;
                 break;
 
-            case 'i':
-                args->image_path = optarg;
-                break;
-
-            case 'h':
+            case 99:
                 usage(argv[0]);
 
             default:
@@ -67,17 +59,54 @@ int parse_args(int argc, char *argv[], struct migration_args *args)
         }
     }
 
-    if (!file_name_flag)
+    if (args->name == NULL)
     {
-        printf("You must set the --name argument!\n");
+        printf("You must specify a container to migrate!\n");
         usage(argv[0]);
     }
+    if (args->dst_host == NULL)
+        args->dst_host = "127.0.0.1";
+
+    args->src_image_path = "/dev/shm/criu-src-dir/";
+    args->dst_image_path = "/dev/shm/criu-dst-dir/";
+    return 0;
+}
+
+int prepare_migration(struct migration_args *args)
+{
+    int rc;
+    rc = mkdir(args->src_image_path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    if (rc < 0)
+    {
+        printf("Error creating local image path in SHM!\n");
+        return 1;
+    }
+    if (args->dst_host == "127.0.0.1")
+        rc = mkdir(args->dst_image_path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    return 0;
+}
+
+int migration(struct migration_args *args)
+{
+    char *cmd_cp, *cmd_rs;
+    char *fmt_cp = "sudo runc checkpoint --image-path %s --page-server %s:%s %s";
+    char *fmt_rs = "sudo runc checkpoint --image-path %s %s-restored &> /dev/null < /dev/null";
+    sprintf(cmd_cp, fmt_cp, args->src_image_path, args->page_server_host,
+            args->page_server_port, args->name);
+    sprintf(cmd_rs, fmt_rs, args->dst_image_path, args->name);
+    if (prepare_migration(args) != 0)
+        return 1;
 
     return 0;
 }
 
 int main(int argc, char *argv[])
 {
+    if (getuid() != 0)
+    {
+        printf("You need to be root to run this program!\n");
+        return 1;
+    }
     struct migration_args *args;
     args = (struct migration_args *) malloc(sizeof(struct migration_args));
     if (args == NULL)
@@ -86,5 +115,6 @@ int main(int argc, char *argv[])
         return 1;
     }
     parse_args(argc, argv, args);
+    migration(args);
     return 0;
 }

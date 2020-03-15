@@ -1,6 +1,8 @@
 #ifndef NET_UTILS_H
 #define NET_UTILS_H
+#include <dirent.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -20,9 +22,10 @@
 #define MAX_XFER_BUF_SIZE   10240
 
 // Method Signatures
-int verify_host(ssh_session session);
-int authenticate_pubkey(ssh_session session);
-int run_remote_command(ssh_session session, char *command);
-int sftp_copy(ssh_session session, char *dst_path, char *src_path);
+ssh_session ssh_start(char *host, char *user);
+
+int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path);
+int sftp_copy_file(ssh_session session, char *dst_path, char *src_path);
+int ssh_remote_command(ssh_session session, char *command);
 
 #endif /* NET_UTILS_H */
