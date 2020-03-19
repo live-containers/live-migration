@@ -100,7 +100,7 @@ static int authenticate_pubkey(ssh_session session)
     return rc;
 }
 
-int ssh_remote_command(ssh_session session, char *command)
+int ssh_remote_command(ssh_session session, char *command, int read_output)
 {
     ssh_channel channel;
     int rc;
@@ -129,34 +129,38 @@ int ssh_remote_command(ssh_session session, char *command)
     rc = ssh_channel_request_exec(channel, command);
     if (rc != SSH_OK)
     {
-        fprintf(stderr, "ssh_remote_command: Error executing remote command.\n");
+        fprintf(stderr, "ssh_remote_command: Error executing remote command: %s\n"
+                command);
         ssh_channel_close(channel);
         ssh_channel_free(channel);
         return rc;
     }
 
-    /* Read Output in chunks */
-    nbytes = ssh_channel_read(channel, buffer, sizeof buffer, 0);
-    while(nbytes > 0)
+    if (read_output)
     {
-        fprintf(stdout, "%s", buffer);
-        /* FIXME check for errors
-        if (fprintf(stdout, "%s", buffer) != (unsigned int) nbytes)
+        /* Read Output in chunks */
+        nbytes = ssh_channel_read(channel, buffer, sizeof buffer, 0);
+        while(nbytes > 0)
         {
-            fprintf(stderr, "Error printing results.\n");
+            fprintf(stdout, "%s", buffer);
+            /* FIXME check for errors
+            if (fprintf(stdout, "%s", buffer) != (unsigned int) nbytes)
+            {
+                fprintf(stderr, "Error printing results.\n");
+                ssh_channel_close(channel);
+                ssh_channel_free(channel);
+                return SSH_ERROR;
+            }
+            */
+            nbytes = ssh_channel_read(channel, buffer, sizeof buffer, 0);
+        }
+        
+        if (nbytes < 0)
+        {
             ssh_channel_close(channel);
             ssh_channel_free(channel);
             return SSH_ERROR;
         }
-        */
-        nbytes = ssh_channel_read(channel, buffer, sizeof buffer, 0);
-    }
-    
-    if (nbytes < 0)
-    {
-        ssh_channel_close(channel);
-        ssh_channel_free(channel);
-        return SSH_ERROR;
     }
 
     ssh_channel_send_eof(channel);

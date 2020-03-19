@@ -17,6 +17,7 @@
 #define HOST_IP             "192.168.56.1" 
 #define VM1_IP              "192.168.56.101"
 #define VM2_IP              "192.168.56.103"
+#define PAGE_SERVER_PORT    "1337"
 
 // Other Constants
 #define MAX_XFER_BUF_SIZE   10240
@@ -26,6 +27,6 @@ ssh_session ssh_start(char *host, char *user);
 
 int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path);
 int sftp_copy_file(ssh_session session, char *dst_path, char *src_path);
-int ssh_remote_command(ssh_session session, char *command);
+int ssh_remote_command(ssh_session session, char *command, int read_output);
 
 #endif /* NET_UTILS_H */

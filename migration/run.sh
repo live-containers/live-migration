@@ -1,5 +1,5 @@
 #!/bin/bash
-REDIS_PATH="/home/carlos/criu-demos/runc/redis/"
+REDIS_PATH="/home/carlos/runc-containers/redis/"
 # Check if number of data points supplied
 if [ -z "$1" ]
 then

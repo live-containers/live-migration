@@ -1,0 +1,2 @@
+VBoxManage setextradata CRIU-Debian VBoxInternal2/SharedFoldersEnableSymlinksCreate/criu-lm 1
+

@@ -6,6 +6,7 @@ struct migration_args {
     char *src_image_path;
     char *dst_image_path;
     char *dst_host;
+    char *dst_user;
     char *page_server_host;
     char *page_server_port;
 };
@@ -22,6 +23,7 @@ int usage(char *file_name)
     exit(1);
 }
 
+/* Parse Command Line Aruments if Running From the Command Line */
 int parse_args(int argc, char *argv[], struct migration_args *args)
 {
     if (argc < 2)
@@ -70,6 +72,21 @@ int parse_args(int argc, char *argv[], struct migration_args *args)
 
     args->src_image_path = "/dev/shm/criu-src-dir/";
     args->dst_image_path = "/dev/shm/criu-dst-dir/";
+    args->session = ssh_start("192.168.56.103", "carlos");
+    return 0;
+}
+
+/* Quick Set Up For Testing Purposes */
+int init_migration(struct migration_args *args)
+{
+    args->name = "eureka";
+    args->dst_host = VM2_IP;
+    args->dst_user = "carlos";
+    args->page_server_host = "127.0.0.1";
+    args->page_server_port = PAGE_SERVER_PORT;
+    args->src_image_path = "/dev/shm/criu-src-dir/";
+    args->dst_image_path = "/dev/shm/criu-dst-dir/";
+    args->session = ssh_start(args->dst_host, args->dst_user);
     return 0;
 }
 
@@ -83,7 +100,10 @@ int prepare_migration(struct migration_args *args)
         printf("Error creating local image path in SHM!\n");
         return 1;
     }
-
+    char *rm_cmd = NULL;
+    sprintf(rm_cmd, "criu page-server -d --images-dir %s --address %s --port %s",
+            args->page_server_host, args->page_server_port);
+    ssh_remote_command(args->session, rm_cmd, 0);
     return 0;
 }
 
@@ -116,10 +136,11 @@ int main(int argc, char *argv[])
         printf("Error allocating command line arguments!\n");
         return 1;
     }
-    parse_args(argc, argv, args);
-    args->session = ssh_start("192.168.56.103", "carlos");
-    char *command = "cat setup.sh";
-    if (ssh_remote_command(args->session, command) != SSH_OK)
+    // FIXME include all arguments when finished
+    //parse_args(argc, argv, args);
+    init_migration(args);
+    char *command = "ls -lart";
+    if (ssh_remote_command(args->session, command, 1) != SSH_OK)
     {
         fprintf(stderr, "Error executing remote command!\n");
         exit(-1);
