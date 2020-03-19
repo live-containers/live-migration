@@ -129,7 +129,7 @@ int ssh_remote_command(ssh_session session, char *command, int read_output)
     rc = ssh_channel_request_exec(channel, command);
     if (rc != SSH_OK)
     {
-        fprintf(stderr, "ssh_remote_command: Error executing remote command: %s\n"
+        fprintf(stderr, "ssh_remote_command: Error executing remote command: %s\n",
                 command);
         ssh_channel_close(channel);
         ssh_channel_free(channel);
@@ -274,7 +274,7 @@ int sftp_copy_file(ssh_session session, char *dst_path, char *src_path)
     return SSH_OK;
 }
 
-int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path)
+int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_ori)
 {
     sftp_session sftp;
     int rc;
@@ -340,6 +340,13 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path)
                 {
                     fprintf(stderr, "sftp_copy_dir: error copying %s to %s\n. %i\n",
                             resolved_path, dst_rel_path, sftp_get_error(sftp));
+                    sftp_free(sftp);
+                    return SSH_ERROR;
+                }
+                if (rm(resolved_path) != 0)
+                {
+                    fprintf(stderr, "sftp_copy_dir: error removing local file %s (remove flag set)\n",
+                            resolved_path);
                     sftp_free(sftp);
                     return SSH_ERROR;
                 }

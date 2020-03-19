@@ -76,6 +76,27 @@ int parse_args(int argc, char *argv[], struct migration_args *args)
     return 0;
 }
 
+/* Clean the working environment once we are done. */
+int clean_env(struct migration_args *args)
+{
+    int rc;
+    char rm_cmd[MAX_CMD_SIZE];
+    memset(rm_cmd, '\0', MAX_CMD_SIZE);
+    rc = rmdir(args->src_image_path);
+    if (rc < 0)
+    {
+        fprintf(stderr, "clean_env: error removing local image dir in SHM, is it empty?!\n");
+        return 1;
+    }
+    sprintf(rm_cmd, "rm -r %s", args->dst_image_path);
+    if (ssh_remote_command(args->session, rm_cmd, 0) != SSH_OK)
+    {
+        fprintf(stderr, "clean_env: removing remote directory during cleanup failed.\n");
+        return 1;
+    }
+    return 0;
+}
+
 /* Quick Set Up For Testing Purposes */
 int init_migration(struct migration_args *args)
 {
@@ -97,28 +118,56 @@ int prepare_migration(struct migration_args *args)
     rc = mkdir(args->src_image_path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     if (rc < 0)
     {
-        printf("Error creating local image path in SHM!\n");
+        fprintf(stderr, "prepare_migration: error creating local image path in SHM.\n");
         return 1;
     }
-    char *rm_cmd = NULL;
-    sprintf(rm_cmd, "criu page-server -d --images-dir %s --address %s --port %s",
-            args->page_server_host, args->page_server_port);
-    ssh_remote_command(args->session, rm_cmd, 0);
+    /* Make remote dir for page server files */
+    char rm_cmd[MAX_CMD_SIZE];
+    memset(rm_cmd, '\0', MAX_CMD_SIZE);
+    sprintf(rm_cmd, "mkdir %s", args->dst_image_path);
+    printf("Remote command 1: %s\n", rm_cmd);
+    if (ssh_remote_command(args->session, rm_cmd, 0) != SSH_OK)
+    {
+        fprintf(stderr, "prepare_migration: error initializing remote page server.\n");
+        return 1;
+    }
+    memset(rm_cmd, '\0', MAX_CMD_SIZE);
+    sprintf(rm_cmd, "criu page-server --images-dir %s --port %s",
+            args->dst_image_path, args->page_server_port);
+    printf("Remote command 2: %s\n", rm_cmd);
+    if (ssh_remote_command(args->session, rm_cmd, 0) != SSH_OK)
+    {
+        fprintf(stderr, "prepare_migration: error initializing remote page server.\n");
+        return 1;
+    }
     return 0;
 }
 
 int migration(struct migration_args *args)
 {
-    char *cmd_cp = NULL;
-    char *cmd_rs = NULL;
+    char cmd_cp[MAX_CMD_SIZE];
+    char cmd_rs[MAX_CMD_SIZE];
+    memset(cmd_cp, '\0', MAX_CMD_SIZE);
+    memset(cmd_rs, '\0', MAX_CMD_SIZE);
     char *fmt_cp = "sudo runc checkpoint --image-path %s --page-server %s:%s %s";
-    char *fmt_rs = "sudo runc checkpoint --image-path %s %s-restored &> /dev/null < /dev/null";
-    sprintf(cmd_cp, fmt_cp, args->src_image_path, args->page_server_host,
+    char *fmt_rs = "sudo runc restore --image-path %s %s-restored &> /dev/null < /dev/null";
+    sprintf(cmd_cp, fmt_cp, args->src_image_path, args->dst_host,
             args->page_server_port, args->name);
     sprintf(cmd_rs, fmt_rs, args->dst_image_path, args->name);
+    printf("Command Checkpoint: %s\n", cmd_cp);
+    printf("Command Restore: %s\n", cmd_rs);
     if (prepare_migration(args) != 0)
+    {
+        fprintf(stderr, "migration: prepare_migration failed.\n");
         return 1;
-
+    }
+    /*
+    if (ssh_remote_command(args->session, cmd_cp, 0) != SSH_OK)
+    {
+        fprintf(stderr, "prepare_migration: error initializing remote page server.\n");
+        return 1;
+    }
+    */
     return 0;
 }
 
@@ -139,12 +188,14 @@ int main(int argc, char *argv[])
     // FIXME include all arguments when finished
     //parse_args(argc, argv, args);
     init_migration(args);
-    char *command = "ls -lart";
-    if (ssh_remote_command(args->session, command, 1) != SSH_OK)
+    /*
+    char *command = "sleep 2";
+    if (ssh_remote_command(args->session, command, 0) != SSH_OK)
     {
         fprintf(stderr, "Error executing remote command!\n");
         exit(-1);
     }
-    //migration(args);
+    */
+    migration(args);
     return 0;
 }
