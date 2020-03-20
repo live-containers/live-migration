@@ -22,6 +22,7 @@
 // Other Constants
 #define MAX_XFER_BUF_SIZE   10240
 #define MAX_CMD_SIZE        512
+#define REMOTE_PWRD         "csegarra1234" // L0L
 
 // Method Signatures
 ssh_session ssh_start(char *host, char *user);

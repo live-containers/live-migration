@@ -9,6 +9,9 @@
 
 #include "net_utils.h"
 
+/* Container Config Paths */
+#define RUNC_REDIS_PATH             "/home/carlos/runc-containers/redis"
+
 struct migration_args;
 
 #endif /* MIGRATION_H */

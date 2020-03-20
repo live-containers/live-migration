@@ -124,17 +124,16 @@ int prepare_migration(struct migration_args *args)
     /* Make remote dir for page server files */
     char rm_cmd[MAX_CMD_SIZE];
     memset(rm_cmd, '\0', MAX_CMD_SIZE);
+    //sprintf(rm_cmd, "mkdir -m 0777 %s", args->dst_image_path);
     sprintf(rm_cmd, "mkdir %s", args->dst_image_path);
-    printf("Remote command 1: %s\n", rm_cmd);
     if (ssh_remote_command(args->session, rm_cmd, 0) != SSH_OK)
     {
-        fprintf(stderr, "prepare_migration: error initializing remote page server.\n");
+        fprintf(stderr, "prepare_migration: error creating dst dir.\n");
         return 1;
     }
     memset(rm_cmd, '\0', MAX_CMD_SIZE);
-    sprintf(rm_cmd, "criu page-server --images-dir %s --port %s",
-            args->dst_image_path, args->page_server_port);
-    printf("Remote command 2: %s\n", rm_cmd);
+    sprintf(rm_cmd, "echo %s | sudo -S criu page-server -d --images-dir %s --port %s",
+            REMOTE_PWRD, args->dst_image_path, args->page_server_port);
     if (ssh_remote_command(args->session, rm_cmd, 0) != SSH_OK)
     {
         fprintf(stderr, "prepare_migration: error initializing remote page server.\n");
@@ -150,24 +149,72 @@ int migration(struct migration_args *args)
     memset(cmd_cp, '\0', MAX_CMD_SIZE);
     memset(cmd_rs, '\0', MAX_CMD_SIZE);
     char *fmt_cp = "sudo runc checkpoint --image-path %s --page-server %s:%s %s";
-    char *fmt_rs = "sudo runc restore --image-path %s %s-restored &> /dev/null < /dev/null";
+    char *fmt_rs = "cd %s && echo %s | sudo -S runc restore --image-path %s %s-restored &> /dev/null < /dev/null &";
     sprintf(cmd_cp, fmt_cp, args->src_image_path, args->dst_host,
             args->page_server_port, args->name);
-    sprintf(cmd_rs, fmt_rs, args->dst_image_path, args->name);
-    printf("Command Checkpoint: %s\n", cmd_cp);
-    printf("Command Restore: %s\n", cmd_rs);
+    sprintf(cmd_rs, fmt_rs, RUNC_REDIS_PATH, REMOTE_PWRD, args->dst_image_path, args->name);
+
+    /* Prepare Environment for Migration */
     if (prepare_migration(args) != 0)
     {
         fprintf(stderr, "migration: prepare_migration failed.\n");
+        if (clean_env(args) != 0)
+        {
+            fprintf(stderr, "migration: clean_env method failed.\n");
+            return 1;
+        }
         return 1;
     }
-    /*
-    if (ssh_remote_command(args->session, cmd_cp, 0) != SSH_OK)
+
+    /* Checkpoint the Running Container */
+    if (system(cmd_cp) != 0)
     {
-        fprintf(stderr, "prepare_migration: error initializing remote page server.\n");
+        fprintf(stderr, "migration: error checkpointing w/ command: '%s'\n",
+                cmd_cp);
+        if (clean_env(args) != 0)
+        {
+            fprintf(stderr, "migration: clean_env method failed.\n");
+            return 1;
+        }
         return 1;
     }
-    */
+
+    /* Copy the Remaining Files (should be few as we are running diskless */
+    if (sftp_copy_dir(args->session, args->dst_image_path, 
+                      args->src_image_path, 1) != SSH_OK)
+    {
+        fprintf(stderr, "migration: error transferring from '%s' to '%s'\n",
+                args->src_image_path, args->dst_image_path);
+        if (clean_env(args) != 0)
+        {
+            fprintf(stderr, "migration: clean_env method failed.\n");
+            return 1;
+        }
+        return 1;
+    }
+
+    /* Restore the Running Container */
+    if (ssh_remote_command(args->session, cmd_rs, 0) != SSH_OK)
+    {
+        fprintf(stderr, "migration: error restoring w/ command: '%s'\n",
+                cmd_rs);
+        /* 
+        if (clean_env(args) != 0)
+        {
+            fprintf(stderr, "migration: clean_env method failed.\n");
+            return 1;
+        }
+        */
+        return 1;
+    }
+
+    /* Clean Environment Before Exitting */
+    sleep(1);
+    if (clean_env(args) != 0)
+    {
+        fprintf(stderr, "migration: clean_env method failed.\n");
+        return 1;
+    }
     return 0;
 }
 
@@ -185,17 +232,15 @@ int main(int argc, char *argv[])
         printf("Error allocating command line arguments!\n");
         return 1;
     }
+    /* DEBUG: Start Container */
+
+
+    /* Argument Initialization */
     // FIXME include all arguments when finished
     //parse_args(argc, argv, args);
     init_migration(args);
-    /*
-    char *command = "sleep 2";
-    if (ssh_remote_command(args->session, command, 0) != SSH_OK)
-    {
-        fprintf(stderr, "Error executing remote command!\n");
-        exit(-1);
-    }
-    */
+
+    /* Run Migration */
     migration(args);
     return 0;
 }

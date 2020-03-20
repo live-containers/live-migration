@@ -74,7 +74,7 @@ static int authenticate_pubkey(ssh_session session)
 {
     int rc;
     ssh_key privkey;
-    char *key_path = "/home/csegarra/.ssh/id_rsa";
+    char *key_path = "/home/carlos/.ssh/id_rsa";
 
     /* Load Private Key */
     rc = ssh_pki_import_privkey_file(key_path, NULL, NULL, NULL, &privkey);
@@ -107,9 +107,6 @@ int ssh_remote_command(ssh_session session, char *command, int read_output)
     char buffer[256];
     int nbytes;
 
-    if (ssh_is_connected(session) == 1)
-        fprintf(stdout, "We are connected!\n");
-
     /* Open a new SSH Channel */
     channel = ssh_channel_new(session);
     if (channel == NULL)
@@ -125,7 +122,19 @@ int ssh_remote_command(ssh_session session, char *command, int read_output)
         return rc;
     }
 
-    /* Execute Remote Command */
+    /* Execute Remote Command 
+     *
+     * We need to run the commands as sudo in the remote system as well
+     * (criu needs to run as root) so I thought of two different ways
+     * of tackling the problem:
+     * 1. Passing the password as plain text.
+     * 2. Manually setup each host to allow rootless sudo.
+     * */
+    /*
+    char sudo_command[MAX_CMD_SIZE];
+    memset(sudo_command, '\0', MAX_CMD_SIZE);
+    sprintf(sudo_command, "echo %s | sudo -S %s", REMOTE_PWRD, command);
+    */
     rc = ssh_channel_request_exec(channel, command);
     if (rc != SSH_OK)
     {
@@ -134,6 +143,24 @@ int ssh_remote_command(ssh_session session, char *command, int read_output)
         ssh_channel_close(channel);
         ssh_channel_free(channel);
         return rc;
+    }
+
+    /* Check the Exit Status of the Remote Command */
+    rc = ssh_channel_get_exit_status(channel);
+    switch (rc) 
+    {
+        case 0:
+            printf("DEBUG: command '%s' exitted succesfully!\n", command);
+            break;
+
+        case -1:
+            printf("DEBUG: still no exit code received!\n");
+            break;
+
+        default:
+            fprintf(stderr, "ssh_remote_command: remote command '%s' failed w/ exit status %i\n",
+                    command, rc);
+            return SSH_ERROR;
     }
 
     if (read_output)
@@ -206,7 +233,8 @@ static int sftp_xfer_file(sftp_session sftp, char *dst_path, char *src_path)
                 src_path);
         return SSH_ERROR;
     }
-    dst_file = sftp_open(sftp, dst_path, access_type, src_stat.st_mode);
+    dst_file = sftp_open(sftp, dst_path, access_type, 0666);
+    //dst_file = sftp_open(sftp, dst_path, access_type, src_stat.st_mode);
     if (dst_file == NULL)
     {
         fprintf(stderr, "sftp_xfer_file: Can't open the destination file: %d\n",
@@ -274,6 +302,13 @@ int sftp_copy_file(ssh_session session, char *dst_path, char *src_path)
     return SSH_OK;
 }
 
+/* Copy the Contents of the Source Directory to the Destination One 
+ *
+ * ssh_session session: current authenticated ssh_session.
+ * char *dst_path: path to the (existing) destination directory.
+ * char *ori_path: path to the (existing) origin directory from where to copy.
+ * int rm_ori: if set to 1, it will remove the contents of the origin directory.
+ */
 int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_ori)
 {
     sftp_session sftp;
@@ -306,6 +341,7 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_or
     if (d)
     {
         /* Create remote copy of directory. */
+        /* TODO make this optional?
         if (sftp_mkdir(sftp, dst_path, 0755) != 0)
         {
             fprintf(stderr, "sftp_copy_dir: Error creating remore directory %d\n",
@@ -313,6 +349,7 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_or
             sftp_free(sftp);
             return SSH_ERROR;
         }
+        */
         char resolved_path[PATH_MAX + 1];
         char src_rel_path[PATH_MAX + 1], dst_rel_path[PATH_MAX + 1];
         memset(src_rel_path, '\0', PATH_MAX + 1);
@@ -327,8 +364,11 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_or
                 strcat(src_rel_path, "/");
                 strcat(src_rel_path, src_dir->d_name);
                 strncpy(dst_rel_path, dst_path, strlen(dst_path));
+                printf("DEBUG: dst_rel_path: %s\n", dst_rel_path);
                 strcat(dst_rel_path, "/");
+                printf("DEBUG: dst_rel_path: %s\n", dst_rel_path);
                 strcat(dst_rel_path, src_dir->d_name);
+                printf("DEBUG: dst_rel_path: %s\n", dst_rel_path);
                 if (realpath(src_rel_path, resolved_path) == NULL)
                 {
                     fprintf(stderr, "sftp_copy_dir: Error obtaining file's real path: %s\n",
@@ -343,7 +383,7 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_or
                     sftp_free(sftp);
                     return SSH_ERROR;
                 }
-                if (rm(resolved_path) != 0)
+                if (remove(resolved_path) != 0)
                 {
                     fprintf(stderr, "sftp_copy_dir: error removing local file %s (remove flag set)\n",
                             resolved_path);
@@ -371,7 +411,8 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_or
 ssh_session ssh_start(char *host, char *user)
 {
     ssh_session session = ssh_new();
-    int verbosity = SSH_LOG_PROTOCOL;
+    // SSH_LOG_NOLOG, SSH_LOG_WARNING, SSH_LOG_PROTOCOL, SSH_LOG_PACKET, SSH_LOG_FUNCTIONS
+    int verbosity = SSH_LOG_WARNING;
     int port = 22;
     int rc;
     char *known_hosts = "~/.ssh/known_hosts";
