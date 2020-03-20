@@ -11,6 +11,33 @@ struct migration_args {
     char *page_server_port;
 };
 
+int check_container_running(char *container_name)
+{
+    FILE *fp;
+    char cmd = "sudo runc list --format json | jq -r '.[] | select(.id == \"%s\")' | wc -l";
+    char cmd2[MAX_CMD_SIZE];
+    memset(cmd2, '\0', MAX_CMD_SIZE);
+    sprintf(cmd2, cmd, container_name);
+
+    fp = popen(cmd2, "r");
+    if (fp == NULL)
+    {
+        fprintf(stderr, "check_container_running: error running command '%s'\n", cmd2);
+        return 1;
+    }
+    char result[16];
+    memset(result, '\0', 16);
+    fgets(result, 16, fp);
+    if (atoi(result) == 0)
+    {
+        fprintf(stderr, "check_container_running: %s is not a running container.\n", container_name);
+        pclose(fp);
+        return 1;
+    }
+    pclose(fp);
+    return 0;
+}
+
 int usage(char *file_name)
 {
     printf("Usage: %s\n", file_name);
@@ -64,7 +91,12 @@ int parse_args(int argc, char *argv[], struct migration_args *args)
 
     if (args->name == NULL)
     {
-        printf("You must specify a container to migrate!\n");
+        fprintf(stderr, "parse_args: you must specify a container to migrate.\n");
+        usage(argv[0]);
+    }
+    else if (check_container_running(args->name) != 0)
+    {
+        fprintf(stderr, "parse_args: failed to verify running container.\n");
         usage(argv[0]);
     }
     if (args->dst_host == NULL)
@@ -74,6 +106,11 @@ int parse_args(int argc, char *argv[], struct migration_args *args)
     args->dst_image_path = "/dev/shm/criu-dst-dir/";
     args->session = ssh_start("192.168.56.103", "carlos");
     return 0;
+}
+
+int launch_container()
+{
+    // FIXME finish meee
 }
 
 /* Clean the working environment once we are done. */
@@ -220,9 +257,10 @@ int migration(struct migration_args *args)
 
 int main(int argc, char *argv[])
 {
+    /* Check if running as root */
     if (getuid() != 0)
     {
-        printf("You need to be root to run this program!\n");
+        fprintf(stderr, "main: you need root privileges to run this program.\n");
         return 1;
     }
     struct migration_args *args;
