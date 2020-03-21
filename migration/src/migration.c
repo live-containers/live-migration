@@ -14,7 +14,7 @@ struct migration_args {
 int check_container_running(char *container_name)
 {
     FILE *fp;
-    char cmd = "sudo runc list --format json | jq -r '.[] | select(.id == \"%s\")' | wc -l";
+    char *cmd = "sudo runc list --format json | jq -r '.[] | select(.id == \"%s\")' | wc -l";
     char cmd2[MAX_CMD_SIZE];
     memset(cmd2, '\0', MAX_CMD_SIZE);
     sprintf(cmd2, cmd, container_name);
@@ -108,9 +108,41 @@ int parse_args(int argc, char *argv[], struct migration_args *args)
     return 0;
 }
 
-int launch_container()
+int launch_container(int experiment, char *experiment_tag)
 {
     // FIXME finish meee
+    if (check_container_running("eureka") != 0)
+    {
+        fprintf(stderr, "launch_container: eureka container already running.\n");
+        return 1;
+    }
+    char cmd[MAX_CMD_SIZE];
+    memset(cmd, '\0', MAX_CMD_SIZE);
+    switch (experiment)
+    {
+        case EXPERIMENT_REDIS:
+            sprintf(cmd, "cd %s && sudo runc run -d eureka &> /dev/null < /dev/null &",
+                    RUNC_REDIS_PATH);            
+            if (system(cmd) != 0)
+            {
+                fprintf(stderr, "launch_container: command '%s' failed.\n", cmd);
+                return 1;
+            }
+            memset(cmd, '\0', MAX_CMD_SIZE);
+            sprintf(cmd, "cat \"%s/data/redis_%s.dat\" | redis-cli -h $(< %s/.ip) --pipe &",
+                   RUNC_REDIS_PATH, experiment_tag, RUNC_REDIS_PATH);
+            if (system(cmd) != 0)
+            {
+                fprintf(stderr, "launch_container: command '%s' failed.\n", cmd);
+                return 1;
+            }
+            return 0;
+
+        default:
+            fprintf(stderr, "launch_container: experiment %i not defined.\n",
+                    experiment);
+    }
+    return 0;
 }
 
 /* Clean the working environment once we are done. */
@@ -261,6 +293,11 @@ int main(int argc, char *argv[])
     if (getuid() != 0)
     {
         fprintf(stderr, "main: you need root privileges to run this program.\n");
+        return 1;
+    }
+    if (launch_container(EXPERIMENT_REDIS, "10") != 0)
+    {
+        fprintf(stderr, "main: launch_container failed.\n");
         return 1;
     }
     struct migration_args *args;

@@ -9,6 +9,9 @@
 
 #include "net_utils.h"
 
+/* Container Experiments */
+#define EXPERIMENT_REDIS            0
+
 /* Container Config Paths */
 #define RUNC_REDIS_PATH             "/home/carlos/runc-containers/redis"
 
