@@ -364,11 +364,8 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_or
                 strcat(src_rel_path, "/");
                 strcat(src_rel_path, src_dir->d_name);
                 strncpy(dst_rel_path, dst_path, strlen(dst_path));
-                printf("DEBUG: dst_rel_path: %s\n", dst_rel_path);
                 strcat(dst_rel_path, "/");
-                printf("DEBUG: dst_rel_path: %s\n", dst_rel_path);
                 strcat(dst_rel_path, src_dir->d_name);
-                printf("DEBUG: dst_rel_path: %s\n", dst_rel_path);
                 if (realpath(src_rel_path, resolved_path) == NULL)
                 {
                     fprintf(stderr, "sftp_copy_dir: Error obtaining file's real path: %s\n",

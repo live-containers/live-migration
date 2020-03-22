@@ -125,30 +125,33 @@ int launch_container(int experiment, char *experiment_tag)
     switch (experiment)
     {
         case EXPERIMENT_REDIS:
-            sprintf(cmd, "cd %s && sudo runc run -d eureka &> /dev/null < /dev/null &",
+            sprintf(cmd, "cd %s && ./run.sh",
                     RUNC_REDIS_PATH);            
             if (system(cmd) != 0)
             {
                 fprintf(stderr, "launch_container: command '%s' failed.\n", cmd);
                 return 1;
             }
-            sleep(3);
-            memset(cmd, '\0', MAX_CMD_SIZE);
-            //sprintf(cmd, "cat \"%s/data/redis_%s.dat\" | redis-cli -h $(< %s/.ip) --pipe",
-            //       RUNC_REDIS_PATH, experiment_tag, RUNC_REDIS_PATH);
-            sprintf(cmd, "cd %s && ./run_redis.sh %s &> /dev/null",
-                    RUNC_REDIS_PATH, experiment_tag);
-            printf("DEBUG: redis cmd 1 -> '%s'\n", cmd);
-            if (system(cmd) != 0)
+            sleep(1);
+
+            /* FIXME fix this when a more realistic experiment is set */
+            FILE *fp;
+            char redis_ip[32];
+            char filename[MAX_CMD_SIZE];
+            memset(filename, '\0', MAX_CMD_SIZE);
+            memset(redis_ip, '\0', 32);
+            sprintf(filename, "%s/.ip", RUNC_REDIS_PATH);
+            fp = fopen(filename, "r");
+            if (fgets(redis_ip, 32, fp) == NULL)
             {
-                fprintf(stderr, "launch_container: command '%s' failed.\n", cmd);
+                fprintf(stderr, "iterative_migration: error getting Redis IP.\n");
                 return 1;
             }
-            /*
-            sleep(3);
+            fclose(fp);
+            /* FIXME Delete Until Here */
             memset(cmd, '\0', MAX_CMD_SIZE);
-            sprintf(cmd, "redis-cli -h $(< %s/.ip) config set \
-                          stop-writes-on-bgsave-error no", RUNC_REDIS_PATH);
+            sprintf(cmd, "redis-cli -h %s config set \
+                          stop-writes-on-bgsave-error no", redis_ip);
             printf("DEBUG: redis cmd 2 -> '%s'\n", cmd);
             if (system(cmd) != 0)
             {
@@ -156,7 +159,6 @@ int launch_container(int experiment, char *experiment_tag)
                                  failed.\n", cmd);
                 return 1;
             }
-            */
             return 0;
 
         default:
@@ -174,7 +176,7 @@ int clean_env(struct migration_args *args)
     char rm_cmd[MAX_CMD_SIZE];
     memset(rm_cmd, '\0', MAX_CMD_SIZE);
     if (args->iterative)
-        sprintf(rm_cmd, "rm -r criu-dst-*");
+        sprintf(rm_cmd, "rm -rf /dev/shm/criu-dst-*");
     else
         sprintf(rm_cmd, "rm -r %s", args->dst_image_path);
     if (ssh_remote_command(args->session, rm_cmd, 0) != SSH_OK)
@@ -275,7 +277,7 @@ int iterative_migration_inc_dirs(struct migration_args *args, int level)
 int iterative_migration(struct migration_args *args)
 {
     /* Initialize the Recurrent Command we will Issue */
-    int num_test_dumps = 10;
+    int num_test_dumps = 5;
     char old_src_path[MAX_CMD_SIZE];
     char old_dst_path[MAX_CMD_SIZE];
     char cmd_db[MAX_CMD_SIZE];
@@ -295,6 +297,7 @@ int iterative_migration(struct migration_args *args)
         return 1;
     }
     fclose(fp);
+    /* FIXME Delete Until Here */
     char *fmt_cmd_db = "cd %s && redis-benchmark -h %s -n 1000 && redis-cli \
                         -h %s SET iter iter%i";
     char *fmt_cmd_dump = "sudo runc checkpoint --pre-dump --image-path %s \
@@ -383,7 +386,7 @@ int iterative_migration(struct migration_args *args)
 
 int migration(struct migration_args *args)
 {
-    /* Prepare Environment for Migration */
+    /* If Iterative Migration Set, Pre-Dump Until Real Migration */
     if (args->iterative)
     {
         if (iterative_migration(args) != 0)
@@ -396,21 +399,18 @@ int migration(struct migration_args *args)
             }
             return 1;
         }
-        printf("DEBUG: Finished testing iterative_migration.\n");
-        return 0;
     }
-    else
+
+    /* Prepare Environment for Stopping Migration */
+    if (prepare_migration(args) != 0)
     {
-        if (prepare_migration(args) != 0)
+        fprintf(stderr, "migration: prepare_migration failed.\n");
+        if (clean_env(args) != 0)
         {
-            fprintf(stderr, "migration: prepare_migration failed.\n");
-            if (clean_env(args) != 0)
-            {
-                fprintf(stderr, "migration: clean_env method failed.\n");
-                return 1;
-            }
+            fprintf(stderr, "migration: clean_env method failed.\n");
             return 1;
         }
+        return 1;
     }
 
     /* Craft Checkpoint and Restore Commands */
