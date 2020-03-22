@@ -1,8 +1,18 @@
 #include "migration.h"
 
+/* To-Dos Before Releasing (or at least things to consider)
+ *
+ * 0. Update usage, READMEs and parse_args method
+ * 1. Standarize Log Methods
+ * 2. Use ints for flags.
+ * 3. Put some sort of linter in place.
+ * 4. Can we add unit tests?
+ */
+
 struct migration_args {
     ssh_session session;
     char *name;
+    int iterative;
     char *src_image_path;
     char *dst_image_path;
     char *dst_host;
@@ -110,12 +120,6 @@ int parse_args(int argc, char *argv[], struct migration_args *args)
 
 int launch_container(int experiment, char *experiment_tag)
 {
-    // FIXME finish meee
-    if (check_container_running("eureka") != 0)
-    {
-        fprintf(stderr, "launch_container: eureka container already running.\n");
-        return 1;
-    }
     char cmd[MAX_CMD_SIZE];
     memset(cmd, '\0', MAX_CMD_SIZE);
     switch (experiment)
@@ -128,19 +132,37 @@ int launch_container(int experiment, char *experiment_tag)
                 fprintf(stderr, "launch_container: command '%s' failed.\n", cmd);
                 return 1;
             }
+            sleep(3);
             memset(cmd, '\0', MAX_CMD_SIZE);
-            sprintf(cmd, "cat \"%s/data/redis_%s.dat\" | redis-cli -h $(< %s/.ip) --pipe &",
-                   RUNC_REDIS_PATH, experiment_tag, RUNC_REDIS_PATH);
+            //sprintf(cmd, "cat \"%s/data/redis_%s.dat\" | redis-cli -h $(< %s/.ip) --pipe",
+            //       RUNC_REDIS_PATH, experiment_tag, RUNC_REDIS_PATH);
+            sprintf(cmd, "cd %s && ./run_redis.sh %s &> /dev/null",
+                    RUNC_REDIS_PATH, experiment_tag);
+            printf("DEBUG: redis cmd 1 -> '%s'\n", cmd);
             if (system(cmd) != 0)
             {
                 fprintf(stderr, "launch_container: command '%s' failed.\n", cmd);
                 return 1;
             }
+            /*
+            sleep(3);
+            memset(cmd, '\0', MAX_CMD_SIZE);
+            sprintf(cmd, "redis-cli -h $(< %s/.ip) config set \
+                          stop-writes-on-bgsave-error no", RUNC_REDIS_PATH);
+            printf("DEBUG: redis cmd 2 -> '%s'\n", cmd);
+            if (system(cmd) != 0)
+            {
+                fprintf(stderr, "launch_container: redis config '%s' \
+                                 failed.\n", cmd);
+                return 1;
+            }
+            */
             return 0;
 
         default:
             fprintf(stderr, "launch_container: experiment %i not defined.\n",
                     experiment);
+            return 1;
     }
     return 0;
 }
@@ -148,16 +170,13 @@ int launch_container(int experiment, char *experiment_tag)
 /* Clean the working environment once we are done. */
 int clean_env(struct migration_args *args)
 {
-    int rc;
+    // TODO remove page-dir still alive in the remote end
     char rm_cmd[MAX_CMD_SIZE];
     memset(rm_cmd, '\0', MAX_CMD_SIZE);
-    rc = rmdir(args->src_image_path);
-    if (rc < 0)
-    {
-        fprintf(stderr, "clean_env: error removing local image dir in SHM, is it empty?!\n");
-        return 1;
-    }
-    sprintf(rm_cmd, "rm -r %s", args->dst_image_path);
+    if (args->iterative)
+        sprintf(rm_cmd, "rm -r criu-dst-*");
+    else
+        sprintf(rm_cmd, "rm -r %s", args->dst_image_path);
     if (ssh_remote_command(args->session, rm_cmd, 0) != SSH_OK)
     {
         fprintf(stderr, "clean_env: removing remote directory during cleanup failed.\n");
@@ -170,16 +189,27 @@ int clean_env(struct migration_args *args)
 int init_migration(struct migration_args *args)
 {
     args->name = "eureka";
+    args->iterative = 1;
     args->dst_host = VM2_IP;
     args->dst_user = "carlos";
     args->page_server_host = "127.0.0.1";
     args->page_server_port = PAGE_SERVER_PORT;
-    args->src_image_path = "/dev/shm/criu-src-dir/";
-    args->dst_image_path = "/dev/shm/criu-dst-dir/";
+    args->src_image_path = (char *) malloc(MAX_CMD_SIZE * sizeof(char));
+    memset(args->src_image_path, '\0', MAX_CMD_SIZE);
+    args->dst_image_path = (char *) malloc(MAX_CMD_SIZE * sizeof(char));
+    memset(args->dst_image_path, '\0', MAX_CMD_SIZE);
+    strcpy(args->src_image_path, "/dev/shm/criu-src-dir");
+    strcpy(args->dst_image_path, "/dev/shm/criu-dst-dir");
     args->session = ssh_start(args->dst_host, args->dst_user);
     return 0;
 }
 
+/* Sets the environment up for a simple migration
+ *
+ * Creates local and remote dir from args, and runs the page server.
+ * Recall that the page-server is a one-shot command, and need to be re
+ * run everytime if we are doing a diskless migration.
+ */
 int prepare_migration(struct migration_args *args)
 {
     int rc;
@@ -193,7 +223,6 @@ int prepare_migration(struct migration_args *args)
     /* Make remote dir for page server files */
     char rm_cmd[MAX_CMD_SIZE];
     memset(rm_cmd, '\0', MAX_CMD_SIZE);
-    //sprintf(rm_cmd, "mkdir -m 0777 %s", args->dst_image_path);
     sprintf(rm_cmd, "mkdir %s", args->dst_image_path);
     if (ssh_remote_command(args->session, rm_cmd, 0) != SSH_OK)
     {
@@ -211,29 +240,191 @@ int prepare_migration(struct migration_args *args)
     return 0;
 }
 
+int iterative_migration_inc_dirs(struct migration_args *args, int level)
+{
+    int new_start;
+    int num_size;
+    switch (level)
+    {
+        case 0:
+            /* Rename 
+             *
+             * If we get really picky w/ size use:
+             * (int)((ceil(log10(num))+1)*sizeof(char))
+             */
+            strcat(args->src_image_path, "-0");
+            strcat(args->dst_image_path, "-0");
+            return 0;
+
+        default:
+            /* Here we use that memory is already allocated and nulled out. */
+            num_size = (int)((floor(log10(level)) + 1) * sizeof(char));
+            new_start = strlen(args->src_image_path) - num_size;
+            /* Hardcoded limitat on the number of intermediate directories. */
+            char num[5];
+            memset(num, '\0', 5);
+            sprintf(num, "%d", level);
+            memset(args->src_image_path + new_start, '\0', num_size);
+            strcat(args->src_image_path, num);
+            memset(args->dst_image_path + new_start, '\0', num_size);
+            strcat(args->dst_image_path, num);
+            return 0;
+    }
+}
+
+int iterative_migration(struct migration_args *args)
+{
+    /* Initialize the Recurrent Command we will Issue */
+    int num_test_dumps = 10;
+    char old_src_path[MAX_CMD_SIZE];
+    char old_dst_path[MAX_CMD_SIZE];
+    char cmd_db[MAX_CMD_SIZE];
+    char cmd_dump[MAX_CMD_SIZE];
+    char cmd_symlink[MAX_CMD_SIZE];
+    /* FIXME fix this when a more realistic experiment is set */
+    FILE *fp;
+    char redis_ip[32];
+    char filename[MAX_CMD_SIZE];
+    memset(filename, '\0', MAX_CMD_SIZE);
+    memset(redis_ip, '\0', 32);
+    sprintf(filename, "%s/.ip", RUNC_REDIS_PATH);
+    fp = fopen(filename, "r");
+    if (fgets(redis_ip, 32, fp) == NULL)
+    {
+        fprintf(stderr, "iterative_migration: error getting Redis IP.\n");
+        return 1;
+    }
+    fclose(fp);
+    char *fmt_cmd_db = "cd %s && redis-benchmark -h %s -n 1000 && redis-cli \
+                        -h %s SET iter iter%i";
+    char *fmt_cmd_dump = "sudo runc checkpoint --pre-dump --image-path %s \
+                          --parent-path %s --page-server %s:%s %s";
+    char *fmt_cmd_symlink = "ln -s %s %s/parent";
+
+    /* Start Iterative Page Dump 
+     *
+     * TODO Determine what threshold to use to trigger another iteration.
+     * For the moment and for demonstrating purposes we just wait 3 seconds.
+     */
+    for (int i = 0; i <= num_test_dumps; i++)
+    {
+        printf("LOG: Iterative Migration --> Step %i.\n", i);
+        /* Pre-Dump */
+        if (prepare_migration(args) != 0)
+        {
+            fprintf(stderr, "iterative_migration: prepare migration failed at \
+                             iteration %i.\n", i + 1);
+            return 1;
+        }
+        memset(cmd_dump, '\0', MAX_CMD_SIZE);
+        if (i == 0)
+            sprintf(cmd_dump, "sudo runc checkpoint --pre-dump --image-path %s \
+                    --page-server %s:%s %s", args->src_image_path, 
+                    args->dst_host, args->page_server_port, args->name);
+        else
+            sprintf(cmd_dump, fmt_cmd_dump, args->src_image_path, old_src_path,
+                    args->dst_host, args->page_server_port, args->name);
+        if (system(cmd_dump) != 0)
+        {
+            fprintf(stderr, "iterative_migration: pre-dump #%i failed.\n", i);
+            return 1;
+        }
+
+        /* Transfer the Remaining Files */
+        if (sftp_copy_dir(args->session, args->dst_image_path, 
+                          args->src_image_path, 1) != SSH_OK)
+        {
+            fprintf(stderr, "migration: error transferring from '%s' to '%s'\n",
+                    args->src_image_path, args->dst_image_path);
+            if (clean_env(args) != 0)
+            {
+                fprintf(stderr, "migration: clean_env method failed.\n");
+                return 1;
+            }
+            return 1;
+        }
+        /* Generate the special parent symlink. */
+        if (i > 0)
+        {
+            memset(cmd_symlink, '\0', MAX_CMD_SIZE);
+            sprintf(cmd_symlink, fmt_cmd_symlink, old_dst_path,
+                    args->dst_image_path);
+            if (ssh_remote_command(args->session, cmd_symlink, 0) != SSH_OK)
+            {
+                fprintf(stderr, "iterative_migration: error creating symlink \
+                                 w/ command: '%s'\n", cmd_symlink);
+                return 1;
+            }
+        }
+
+        /* Swap Dirs */
+        memset(old_src_path, '\0', MAX_CMD_SIZE);
+        strcpy(old_src_path, args->src_image_path);
+        memset(old_dst_path, '\0', MAX_CMD_SIZE);
+        strcpy(old_dst_path, args->dst_image_path);
+        iterative_migration_inc_dirs(args, i);
+
+        /* Run DB Command and Wait */
+        printf("DEBUG: Running Redis Benchmark.\n");
+        memset(cmd_db, '\0', MAX_CMD_SIZE);
+        sprintf(cmd_db, fmt_cmd_db, RUNC_REDIS_PATH, redis_ip, redis_ip, i);
+        if (system(cmd_db) != 0)
+        {
+            fprintf(stderr, "iterative_migration: db command %s failed.\n",
+                    cmd_db);
+            return 1;
+        }
+
+        /* Holdback time. FIXME how to choose this? */
+        sleep(3);
+    }
+    return 0;
+}
+
 int migration(struct migration_args *args)
 {
+    /* Prepare Environment for Migration */
+    if (args->iterative)
+    {
+        if (iterative_migration(args) != 0)
+        {
+            fprintf(stderr, "migration: iterative_migration failed.\n");
+            if (clean_env(args) != 0)
+            {
+                fprintf(stderr, "migration: clean_env method failed.\n");
+                return 1;
+            }
+            return 1;
+        }
+        printf("DEBUG: Finished testing iterative_migration.\n");
+        return 0;
+    }
+    else
+    {
+        if (prepare_migration(args) != 0)
+        {
+            fprintf(stderr, "migration: prepare_migration failed.\n");
+            if (clean_env(args) != 0)
+            {
+                fprintf(stderr, "migration: clean_env method failed.\n");
+                return 1;
+            }
+            return 1;
+        }
+    }
+
+    /* Craft Checkpoint and Restore Commands */
     char cmd_cp[MAX_CMD_SIZE];
     char cmd_rs[MAX_CMD_SIZE];
     memset(cmd_cp, '\0', MAX_CMD_SIZE);
     memset(cmd_rs, '\0', MAX_CMD_SIZE);
-    char *fmt_cp = "sudo runc checkpoint --image-path %s --page-server %s:%s %s";
-    char *fmt_rs = "cd %s && echo %s | sudo -S runc restore --image-path %s %s-restored &> /dev/null < /dev/null &";
+    char *fmt_cp = "sudo runc checkpoint --image-path %s --page-server \
+                    %s:%s %s";
+    char *fmt_rs = "cd %s && echo %s | sudo -S runc restore --image-path %s \
+                    %s-restored &> /dev/null < /dev/null &";
     sprintf(cmd_cp, fmt_cp, args->src_image_path, args->dst_host,
             args->page_server_port, args->name);
     sprintf(cmd_rs, fmt_rs, RUNC_REDIS_PATH, REMOTE_PWRD, args->dst_image_path, args->name);
-
-    /* Prepare Environment for Migration */
-    if (prepare_migration(args) != 0)
-    {
-        fprintf(stderr, "migration: prepare_migration failed.\n");
-        if (clean_env(args) != 0)
-        {
-            fprintf(stderr, "migration: clean_env method failed.\n");
-            return 1;
-        }
-        return 1;
-    }
 
     /* Checkpoint the Running Container */
     if (system(cmd_cp) != 0)
@@ -295,11 +486,15 @@ int main(int argc, char *argv[])
         fprintf(stderr, "main: you need root privileges to run this program.\n");
         return 1;
     }
+
+    /* DEBUG: Start Container */
     if (launch_container(EXPERIMENT_REDIS, "10") != 0)
     {
         fprintf(stderr, "main: launch_container failed.\n");
         return 1;
     }
+
+    /* Argument Initialization */
     struct migration_args *args;
     args = (struct migration_args *) malloc(sizeof(struct migration_args));
     if (args == NULL)
@@ -307,10 +502,6 @@ int main(int argc, char *argv[])
         printf("Error allocating command line arguments!\n");
         return 1;
     }
-    /* DEBUG: Start Container */
-
-
-    /* Argument Initialization */
     // FIXME include all arguments when finished
     //parse_args(argc, argv, args);
     init_migration(args);
