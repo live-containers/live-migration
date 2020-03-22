@@ -19,6 +19,7 @@ struct migration_args {
     char *dst_user;
     char *page_server_host;
     char *page_server_port;
+    char *log_file;
 };
 
 int check_container_running(char *container_name)
@@ -298,7 +299,7 @@ int iterative_migration(struct migration_args *args)
     }
     fclose(fp);
     /* FIXME Delete Until Here */
-    char *fmt_cmd_db = "cd %s && redis-benchmark -h %s -n 1000 && redis-cli \
+    char *fmt_cmd_db = "cd %s && redis-benchmark -h %s -n 1000 -q && redis-cli \
                         -h %s SET iter iter%i";
     char *fmt_cmd_dump = "sudo runc checkpoint --pre-dump --image-path %s \
                           --parent-path %s --page-server %s:%s %s";
@@ -499,7 +500,7 @@ int main(int argc, char *argv[])
     args = (struct migration_args *) malloc(sizeof(struct migration_args));
     if (args == NULL)
     {
-        printf("Error allocating command line arguments!\n");
+        printf("main: error allocating command line arguments.\n");
         return 1;
     }
     // FIXME include all arguments when finished
@@ -507,6 +508,13 @@ int main(int argc, char *argv[])
     init_migration(args);
 
     /* Run Migration */
-    migration(args);
+    if (migration(args) != 0)
+    {
+        fprintf(stderr, "main: error running migration.\n");
+        return 1;
+    }
+
+    /* Free memory and close sessions */
+    fprintf(stdout, "LOG: migration finished succesfully.\n");
     return 0;
 }
