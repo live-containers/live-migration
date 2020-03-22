@@ -364,11 +364,8 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_or
                 strcat(src_rel_path, "/");
                 strcat(src_rel_path, src_dir->d_name);
                 strncpy(dst_rel_path, dst_path, strlen(dst_path));
-                printf("DEBUG: dst_rel_path: %s\n", dst_rel_path);
                 strcat(dst_rel_path, "/");
-                printf("DEBUG: dst_rel_path: %s\n", dst_rel_path);
                 strcat(dst_rel_path, src_dir->d_name);
-                printf("DEBUG: dst_rel_path: %s\n", dst_rel_path);
                 if (realpath(src_rel_path, resolved_path) == NULL)
                 {
                     fprintf(stderr, "sftp_copy_dir: Error obtaining file's real path: %s\n",
@@ -394,6 +391,23 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_or
                 memset(dst_rel_path, '\0', PATH_MAX + 1);
                 memset(resolved_path, '\0', PATH_MAX + 1);
             }
+            else if (src_dir->d_type == DT_LNK)
+            {
+                /* On iterative migration, each intermediate checkpoint dir
+                 * has a symbolic link to its "parent". Copying it
+                 * programatically is more verbose than crafting it ourselves.
+                 */
+                strncpy(src_rel_path, src_path, strlen(src_path));
+                strcat(src_rel_path, "/");
+                strcat(src_rel_path, src_dir->d_name);
+                if (remove(src_rel_path) != 0)
+                {
+                    fprintf(stderr, "sftp_copy_dir: error removing \
+                                     symlink.\n");
+                    return 1;
+                }
+                memset(src_rel_path, '\0', PATH_MAX + 1);
+            }
         }
         closedir(d);
     }
@@ -404,6 +418,13 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_or
         return SSH_ERROR;
     }
 
+    if (rm_ori && (rmdir(src_path) != 0))
+    {
+        fprintf(stderr, "sftp_copy_dir: failed removing origin directory \
+                         '%s'\n", src_path);
+        sftp_free(sftp);
+        return SSH_ERROR;
+    }
     sftp_free(sftp);
     return SSH_OK;
 }
@@ -412,7 +433,7 @@ ssh_session ssh_start(char *host, char *user)
 {
     ssh_session session = ssh_new();
     // SSH_LOG_NOLOG, SSH_LOG_WARNING, SSH_LOG_PROTOCOL, SSH_LOG_PACKET, SSH_LOG_FUNCTIONS
-    int verbosity = SSH_LOG_WARNING;
+    int verbosity = SSH_LOG_NOLOG;
     int port = 22;
     int rc;
     char *known_hosts = "~/.ssh/known_hosts";

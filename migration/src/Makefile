@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall
 LIBSSH = ../lib/libssh-0.9.3/build/src/libssh.a
-LD_ADD = -lssh -lpthread -lrt -lcrypto -lz -ldl #${LIBSSH}
+LD_ADD = -lssh -lpthread -lrt -lcrypto -lz -ldl -lm #${LIBSSH}
 #INC =-I. -I../lib/libssh-0.9.3/include
 
 migration: migration.o net_utils.o
