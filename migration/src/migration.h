@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 
 #include "net_utils.h"
@@ -15,6 +16,10 @@
 
 /* Container Config Paths */
 #define RUNC_REDIS_PATH             "/home/carlos/runc-containers/redis"
+
+/* Other Settings */
+#define LOG_FILE                    "/var/log/runc-lm"
+#define BENCHMARK_BASE_PATH         "../../benchmarking/iterative-migration"
 
 struct migration_args;
 

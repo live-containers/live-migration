@@ -22,6 +22,13 @@ struct migration_args {
     char *log_file;
 };
 
+struct experiment {
+    int experiment_id;
+    char *experiment_name;
+    char *container_path;
+    double *experiment_times;
+};
+
 int check_container_running(char *container_name)
 {
     FILE *fp;
@@ -507,6 +514,11 @@ int main(int argc, char *argv[])
     //parse_args(argc, argv, args);
     init_migration(args);
 
+    /* Initialize Experiment */
+    struct experiment *exp;
+    exp = (struct experiment *) malloc(sizeof(struct experiment));
+    if
+
     /* Run Migration */
     if (migration(args) != 0)
     {
@@ -515,6 +527,7 @@ int main(int argc, char *argv[])
     }
 
     /* Free memory and close sessions */
+    free(args);
     fprintf(stdout, "LOG: migration finished succesfully.\n");
     return 0;
 }
