@@ -500,7 +500,7 @@ int main(int argc, char *argv[])
     args = (struct migration_args *) malloc(sizeof(struct migration_args));
     if (args == NULL)
     {
-        printf("main: error allocating command line arguments.\n");
+        fprintf(stderr, "main: error allocating command line arguments.\n");
         return 1;
     }
     // FIXME include all arguments when finished
