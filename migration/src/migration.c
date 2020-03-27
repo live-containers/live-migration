@@ -292,7 +292,9 @@ static int iterative_migration(struct migration_args *args)
         return 1;
     }
     struct timeval t_ini, t_end, t_result;
-    double dir_size[num_test_dumps + 1];
+    //double dir_size[num_test_dumps + 1];
+    double *dir_size;
+    dir_size = (double *) malloc((num_test_dumps + 1) * sizeof(double));
     
     /* Initialize the Recurrent Command we will Issue */
     char old_src_path[MAX_CMD_SIZE];
@@ -422,6 +424,8 @@ static int iterative_migration(struct migration_args *args)
                 times[2*i + 1]);
     }
     fclose(fp);
+    free(dir_size);
+    free(times);
     return 0;
 }
 

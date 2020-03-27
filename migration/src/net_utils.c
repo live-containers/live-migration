@@ -272,7 +272,8 @@ static int sftp_xfer_file(sftp_session sftp, char *dst_path, char *src_path,
     }
 
     /* Only if succesful, add size (in KB) to the counter */
-    *size_count += (double) src_stat.st_size / 1024;
+    if (size_count != NULL)
+        *size_count = *size_count + (double) src_stat.st_size / 1024;
     return SSH_OK;
 }
 
@@ -380,6 +381,7 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path,
                     sftp_free(sftp);
                     return SSH_ERROR;
                 }
+                printf("we reach xfer file?\n");
                 if (sftp_xfer_file(sftp, dst_rel_path, resolved_path, dir_size)
                         != SSH_OK)
                 {
