@@ -22,14 +22,7 @@ struct migration_args {
     char *log_file;
 };
 
-struct experiment {
-    int experiment_id;
-    char *experiment_name;
-    char *container_path;
-    double *experiment_times;
-};
-
-int check_container_running(char *container_name)
+static int check_container_running(char *container_name)
 {
     FILE *fp;
     char *cmd = "sudo runc list --format json | jq -r '.[] | select(.id == \"%s\")' | wc -l";
@@ -56,7 +49,7 @@ int check_container_running(char *container_name)
     return 0;
 }
 
-int usage(char *file_name)
+static int usage(char *file_name)
 {
     printf("Usage: %s\n", file_name);
     printf("\t--name <container id>\tname of the runC container\n");
@@ -69,7 +62,7 @@ int usage(char *file_name)
 }
 
 /* Parse Command Line Aruments if Running From the Command Line */
-int parse_args(int argc, char *argv[], struct migration_args *args)
+static int parse_args(int argc, char *argv[], struct migration_args *args)
 {
     if (argc < 2)
         usage(argv[0]);
@@ -126,7 +119,7 @@ int parse_args(int argc, char *argv[], struct migration_args *args)
     return 0;
 }
 
-int launch_container(int experiment, char *experiment_tag)
+static int launch_container(int experiment, char *experiment_tag)
 {
     char cmd[MAX_CMD_SIZE];
     memset(cmd, '\0', MAX_CMD_SIZE);
@@ -178,7 +171,7 @@ int launch_container(int experiment, char *experiment_tag)
 }
 
 /* Clean the working environment once we are done. */
-int clean_env(struct migration_args *args)
+static int clean_env(struct migration_args *args)
 {
     // TODO remove page-dir still alive in the remote end
     char rm_cmd[MAX_CMD_SIZE];
@@ -196,7 +189,7 @@ int clean_env(struct migration_args *args)
 }
 
 /* Quick Set Up For Testing Purposes */
-int init_migration(struct migration_args *args)
+static int init_migration(struct migration_args *args)
 {
     args->name = "eureka";
     args->iterative = 1;
@@ -220,7 +213,7 @@ int init_migration(struct migration_args *args)
  * Recall that the page-server is a one-shot command, and need to be re
  * run everytime if we are doing a diskless migration.
  */
-int prepare_migration(struct migration_args *args)
+static int prepare_migration(struct migration_args *args)
 {
     int rc;
     /* Make local dir for checkpoint files */
@@ -250,7 +243,7 @@ int prepare_migration(struct migration_args *args)
     return 0;
 }
 
-int iterative_migration_inc_dirs(struct migration_args *args, int level)
+static int iterative_migration_inc_dirs(struct migration_args *args, int level)
 {
     int new_start;
     int num_size;
@@ -282,10 +275,26 @@ int iterative_migration_inc_dirs(struct migration_args *args, int level)
     }
 }
 
-int iterative_migration(struct migration_args *args)
+static int iterative_migration(struct migration_args *args)
 {
+    /* Initialize the Experiment Benchmarking */
+    const int num_test_dumps = 5;
+    double *times; // Stored in ms
+    /* For each iteration we store:
+     *
+     * 1. Dump time: prepare all dirs, and dump the current state.
+     * 2. Transfer time: time to transfer the new pages.
+     */
+    times = (double *) malloc(2 * (num_test_dumps + 1) * sizeof(double));
+    if (times == NULL)
+    {
+        fprintf(stderr, "iterative_migration: error allocating time array.\n");
+        return 1;
+    }
+    struct timeval t_ini, t_end, t_result;
+    double dir_size[num_test_dumps + 1];
+    
     /* Initialize the Recurrent Command we will Issue */
-    int num_test_dumps = 5;
     char old_src_path[MAX_CMD_SIZE];
     char old_dst_path[MAX_CMD_SIZE];
     char cmd_db[MAX_CMD_SIZE];
@@ -319,8 +328,9 @@ int iterative_migration(struct migration_args *args)
      */
     for (int i = 0; i <= num_test_dumps; i++)
     {
-        printf("LOG: Iterative Migration --> Step %i.\n", i);
         /* Pre-Dump */
+        gettimeofday(&t_ini, NULL);
+        printf("LOG: Iterative Migration --> Step %i.\n", i);
         if (prepare_migration(args) != 0)
         {
             fprintf(stderr, "iterative_migration: prepare migration failed at \
@@ -335,15 +345,23 @@ int iterative_migration(struct migration_args *args)
         else
             sprintf(cmd_dump, fmt_cmd_dump, args->src_image_path, old_src_path,
                     args->dst_host, args->page_server_port, args->name);
+        // TODO Eventually use CRIU's C API? Measure!
         if (system(cmd_dump) != 0)
         {
             fprintf(stderr, "iterative_migration: pre-dump #%i failed.\n", i);
             return 1;
         }
+        gettimeofday(&t_end, NULL);
+        timersub(&t_end, &t_ini, &t_result);
+        times[2*i + 0] = t_result.tv_sec * 1000 + t_result.tv_usec / 1000.0;
+        timerclear(&t_ini);
+        timerclear(&t_end);
+        timerclear(&t_result);
 
         /* Transfer the Remaining Files */
+        gettimeofday(&t_ini, NULL);
         if (sftp_copy_dir(args->session, args->dst_image_path, 
-                          args->src_image_path, 1) != SSH_OK)
+                          args->src_image_path, 1, &dir_size[i]) != SSH_OK)
         {
             fprintf(stderr, "migration: error transferring from '%s' to '%s'\n",
                     args->src_image_path, args->dst_image_path);
@@ -367,13 +385,19 @@ int iterative_migration(struct migration_args *args)
                 return 1;
             }
         }
-
         /* Swap Dirs */
         memset(old_src_path, '\0', MAX_CMD_SIZE);
         strcpy(old_src_path, args->src_image_path);
         memset(old_dst_path, '\0', MAX_CMD_SIZE);
         strcpy(old_dst_path, args->dst_image_path);
         iterative_migration_inc_dirs(args, i);
+        /* Finish Up Timing */
+        gettimeofday(&t_end, NULL);
+        timersub(&t_end, &t_ini, &t_result);
+        times[2*i + 1] = t_result.tv_sec * 1000 + t_result.tv_usec / 1000.0;
+        timerclear(&t_ini);
+        timerclear(&t_end);
+        timerclear(&t_result);
 
         /* Run DB Command and Wait */
         printf("DEBUG: Running Redis Benchmark.\n");
@@ -389,6 +413,15 @@ int iterative_migration(struct migration_args *args)
         /* Holdback time. FIXME how to choose this? */
         sleep(3);
     }
+    fp = fopen("../../benchmarking/iterative-migration/redis/benchmark_loop.dat", "w");
+    fprintf(fp, "===============\nredis-benchmark experiment\n===============\n");
+    fprintf(fp, "iter,dump,xfer\n");
+    for (int i = 0; i <= num_test_dumps; i++)
+    {
+        fprintf(fp, "%i,%f,%f,%f\n", i, dir_size[i], times[2*i + 0],
+                times[2*i + 1]);
+    }
+    fclose(fp);
     return 0;
 }
 
@@ -449,7 +482,7 @@ int migration(struct migration_args *args)
 
     /* Copy the Remaining Files (should be few as we are running diskless */
     if (sftp_copy_dir(args->session, args->dst_image_path, 
-                      args->src_image_path, 1) != SSH_OK)
+                      args->src_image_path, 1, NULL) != SSH_OK)
     {
         fprintf(stderr, "migration: error transferring from '%s' to '%s'\n",
                 args->src_image_path, args->dst_image_path);
@@ -513,11 +546,6 @@ int main(int argc, char *argv[])
     // FIXME include all arguments when finished
     //parse_args(argc, argv, args);
     init_migration(args);
-
-    /* Initialize Experiment */
-    struct experiment *exp;
-    exp = (struct experiment *) malloc(sizeof(struct experiment));
-    if
 
     /* Run Migration */
     if (migration(args) != 0)
