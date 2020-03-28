@@ -381,7 +381,6 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path,
                     sftp_free(sftp);
                     return SSH_ERROR;
                 }
-                printf("we reach xfer file?\n");
                 if (sftp_xfer_file(sftp, dst_rel_path, resolved_path, dir_size)
                         != SSH_OK)
                 {
