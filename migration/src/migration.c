@@ -178,7 +178,8 @@ static int clean_env(struct migration_args *args)
     char rm_cmd[MAX_CMD_SIZE];
     memset(rm_cmd, '\0', MAX_CMD_SIZE);
     if (args->iterative)
-        sprintf(rm_cmd, "rm -rf /dev/shm/criu-dst-*");
+        //sprintf(rm_cmd, "rm -rf /dev/shm/criu-dst-*");
+        printf("Delete me!\n");
     else
         sprintf(rm_cmd, "rm -r %s", args->dst_image_path);
     if (ssh_remote_command(args->session, rm_cmd, 0) != SSH_OK)
@@ -234,7 +235,7 @@ static int prepare_migration(struct migration_args *args)
         return 1;
     }
     memset(rm_cmd, '\0', MAX_CMD_SIZE);
-    sprintf(rm_cmd, "echo %s | sudo -S criu page-server -d --images-dir %s --port %s",
+    sprintf(rm_cmd, "echo %s | sudo -S criu page-server -d --auto-dedup --images-dir %s --port %s",
             REMOTE_PWRD, args->dst_image_path, args->page_server_port);
     if (ssh_remote_command(args->session, rm_cmd, 0) != SSH_OK)
     {
@@ -340,7 +341,7 @@ static int iterative_migration(struct migration_args *args)
     int db_pattern[6] = {1000, 500, 250, 125, 75, 25}; // Pattern 2
     //int db_pattern[6] = {1000, 1000, 1000, 1000, 1000, 1000}; // Pattern 1
     char *fmt_cmd_dump = "sudo runc checkpoint --pre-dump --image-path %s \
-                          --parent-path %s --page-server %s:%s %s";
+                          --auto-dedup --parent-path %s --page-server %s:%s %s";
     char *fmt_cmd_symlink = "ln -s %s %s/parent";
 
     /* Start Iterative Page Dump 
@@ -372,6 +373,7 @@ static int iterative_migration(struct migration_args *args)
         else
             sprintf(cmd_dump, fmt_cmd_dump, args->src_image_path, old_src_path,
                     args->dst_host, args->page_server_port, args->name);
+        fprintf(stdout, "DEBUG: dump command '%s'\n", cmd_dump);
         /* Finish Prepare Migration */
         #if BENCHMARK
             gettimeofday(&t_end, NULL);
