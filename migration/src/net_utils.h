@@ -27,7 +27,8 @@
 // Method Signatures
 ssh_session ssh_start(char *host, char *user);
 
-int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_ori);
+int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path,
+                  int rm_ori, double *dir_size);
 int sftp_copy_file(ssh_session session, char *dst_path, char *src_path);
 int ssh_remote_command(ssh_session session, char *command, int read_output);
 

@@ -197,9 +197,10 @@ int ssh_remote_command(ssh_session session, char *command, int read_output)
 }
 
 /* Low-level helper function to transfer a specific file by chunks.
- * TODO how could we leverage compression in this case?
+ * TODO how could we leverage compression in this case? Or when to do so?
  */
-static int sftp_xfer_file(sftp_session sftp, char *dst_path, char *src_path)
+static int sftp_xfer_file(sftp_session sftp, char *dst_path, char *src_path,
+                          double *size_count)
 {
     FILE *src_file;
     struct stat src_stat;
@@ -259,6 +260,7 @@ static int sftp_xfer_file(sftp_session sftp, char *dst_path, char *src_path)
         }
     }
 
+    /* Clean Up */
     fclose(src_file);
     rc = sftp_close(dst_file);
     if (rc != SSH_OK)
@@ -268,6 +270,10 @@ static int sftp_xfer_file(sftp_session sftp, char *dst_path, char *src_path)
         sftp_free(sftp);
         return rc;
     }
+
+    /* Only if succesful, add size (in KB) to the counter */
+    if (size_count != NULL)
+        *size_count = *size_count + (double) src_stat.st_size / 1024;
     return SSH_OK;
 }
 
@@ -295,7 +301,7 @@ int sftp_copy_file(ssh_session session, char *dst_path, char *src_path)
         return rc;
     }
 
-    if (sftp_xfer_file(sftp, dst_path, src_path) != SSH_OK)
+    if (sftp_xfer_file(sftp, dst_path, src_path, NULL) != SSH_OK)
         return SSH_ERROR;
 
     sftp_free(sftp);
@@ -308,8 +314,10 @@ int sftp_copy_file(ssh_session session, char *dst_path, char *src_path)
  * char *dst_path: path to the (existing) destination directory.
  * char *ori_path: path to the (existing) origin directory from where to copy.
  * int rm_ori: if set to 1, it will remove the contents of the origin directory.
+ * int *dir_size: if not null, will return the size of the dir xfered.
  */
-int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_ori)
+int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path,
+                  int rm_ori, double *dir_size)
 {
     sftp_session sftp;
     int rc;
@@ -373,17 +381,20 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path, int rm_or
                     sftp_free(sftp);
                     return SSH_ERROR;
                 }
-                if (sftp_xfer_file(sftp, dst_rel_path, resolved_path) != SSH_OK)
+                if (sftp_xfer_file(sftp, dst_rel_path, resolved_path, dir_size)
+                        != SSH_OK)
                 {
-                    fprintf(stderr, "sftp_copy_dir: error copying %s to %s\n. %i\n",
-                            resolved_path, dst_rel_path, sftp_get_error(sftp));
+                    fprintf(stderr, "sftp_copy_dir: error copying %s \
+                                     to %s\n. %i\n", resolved_path,
+                                     dst_rel_path, sftp_get_error(sftp));
                     sftp_free(sftp);
                     return SSH_ERROR;
                 }
                 if (remove(resolved_path) != 0)
                 {
-                    fprintf(stderr, "sftp_copy_dir: error removing local file %s (remove flag set)\n",
-                            resolved_path);
+                    fprintf(stderr, "sftp_copy_dir: error removing local \
+                                     file %s (remove flag set)\n",
+                                     resolved_path);
                     sftp_free(sftp);
                     return SSH_ERROR;
                 }
