@@ -15,6 +15,17 @@
 /* Container Experiments */
 #define EXPERIMENT_REDIS            0
 
+#if BENCHMARK
+    /* For each iteration we store:
+     *
+     * 1. Prepare migration: create local and remote dirs and start page-server.
+     * 2. Pre-dump: run pre-dump
+     * 3. Transfer files
+     * 4. Housekeeping: create symlink, update dirs
+     */
+    #define NUM_PROFILING_EVENTS            4
+#endif
+
 /* Container Config Paths */
 #define RUNC_REDIS_PATH             "/home/carlos/runc-containers/redis"
 
