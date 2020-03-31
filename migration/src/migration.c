@@ -235,7 +235,7 @@ static int prepare_migration(struct migration_args *args)
         return 1;
     }
     memset(rm_cmd, '\0', MAX_CMD_SIZE);
-    sprintf(rm_cmd, "echo %s | sudo -S criu page-server -d --auto-dedup --images-dir %s --port %s",
+    sprintf(rm_cmd, "echo %s | sudo -S criu page-server -d --images-dir %s --port %s",
             REMOTE_PWRD, args->dst_image_path, args->page_server_port);
     if (ssh_remote_command(args->session, rm_cmd, 0) != SSH_OK)
     {
@@ -340,8 +340,11 @@ static int iterative_migration(struct migration_args *args)
     //int db_pattern[7] = {1000, 1000, 1000, 1000, 1000, 1000}; // Pattern 1
     int db_pattern[6] = {1000, 500, 250, 125, 75, 25}; // Pattern 2
     //int db_pattern[6] = {1000, 1000, 1000, 1000, 1000, 1000}; // Pattern 1
+    /* --track-mem is turned on by default if --parent-path is provided
+     * see: runc/libcontainer/container_linux.go#L1032
+     */
     char *fmt_cmd_dump = "sudo runc checkpoint --pre-dump --image-path %s \
-                          --auto-dedup --parent-path %s --page-server %s:%s %s";
+                          --parent-path %s --page-server %s:%s %s";
     char *fmt_cmd_symlink = "ln -s %s %s/parent";
 
     /* Start Iterative Page Dump 
@@ -368,7 +371,7 @@ static int iterative_migration(struct migration_args *args)
         memset(cmd_dump, '\0', MAX_CMD_SIZE);
         if (i == 0)
             sprintf(cmd_dump, "sudo runc checkpoint --pre-dump --image-path %s \
-                    --auto-dedup --page-server %s:%s %s", args->src_image_path, 
+                    --page-server %s:%s %s", args->src_image_path, 
                     args->dst_host, args->page_server_port, args->name);
         else
             sprintf(cmd_dump, fmt_cmd_dump, args->src_image_path, old_src_path,
