@@ -390,7 +390,7 @@ int sftp_copy_dir(ssh_session session, char *dst_path, char *src_path,
                     sftp_free(sftp);
                     return SSH_ERROR;
                 }
-                if (remove(resolved_path) != 0)
+                if (rm_ori && remove(resolved_path) != 0)
                 {
                     fprintf(stderr, "sftp_copy_dir: error removing local \
                                      file %s (remove flag set)\n",
