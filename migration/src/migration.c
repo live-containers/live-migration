@@ -16,6 +16,8 @@ struct migration_args {
     int iterative;
     char *src_image_path;
     char *dst_image_path;
+    char *src_prev_image_dir;
+    char *dst_prev_image_dir;
     char *dst_host;
     char *dst_user;
     char *page_server_host;
@@ -205,6 +207,10 @@ static int init_migration(struct migration_args *args)
     memset(args->dst_image_path, '\0', MAX_CMD_SIZE);
     strcpy(args->src_image_path, "/dev/shm/criu-src-dir");
     strcpy(args->dst_image_path, "/dev/shm/criu-dst-dir");
+    args->src_prev_image_dir = (char *) malloc(MAX_CMD_SIZE * sizeof(char));
+    memset(args->src_prev_image_dir, '\0', MAX_CMD_SIZE);
+    args->dst_prev_image_dir = (char *) malloc(MAX_CMD_SIZE * sizeof(char));
+    memset(args->dst_prev_image_dir, '\0', MAX_CMD_SIZE);
     args->session = ssh_start(args->dst_host, args->dst_user);
     return 0;
 }
@@ -215,7 +221,7 @@ static int init_migration(struct migration_args *args)
  * Recall that the page-server is a one-shot command, and need to be re
  * run everytime if we are doing a diskless migration.
  */
-static int prepare_migration(struct migration_args *args)
+static int prepare_migration(struct migration_args *args, int first_iter)
 {
     int rc;
     /* Make local dir for checkpoint files */
@@ -235,8 +241,20 @@ static int prepare_migration(struct migration_args *args)
         return 1;
     }
     memset(rm_cmd, '\0', MAX_CMD_SIZE);
-    sprintf(rm_cmd, "echo %s | sudo -S criu page-server -d --auto-dedup --images-dir %s --port %s",
-            REMOTE_PWRD, args->dst_image_path, args->page_server_port);
+    if (first_iter)
+    {
+        sprintf(rm_cmd, "echo %s | sudo -S criu page-server -d --images-dir %s --port %s",
+                REMOTE_PWRD, args->dst_image_path, args->page_server_port);
+    }
+    else
+    {
+        sprintf(rm_cmd, "echo %s | sudo -S criu page-server -d "
+                        "--images-dir %s "
+                        "--prev-images-dir %s "
+                        "--port %s",
+                REMOTE_PWRD, args->dst_image_path, args->dst_prev_image_dir,
+                args->page_server_port);
+    }
     if (ssh_remote_command(args->session, rm_cmd, 0) != SSH_OK)
     {
         fprintf(stderr, "prepare_migration: error initializing remote page server.\n");
@@ -315,7 +333,6 @@ static int iterative_migration(struct migration_args *args)
     #endif
     
     /* Initialize the Recurrent Command we will Issue */
-    char old_src_path[MAX_CMD_SIZE];
     char old_dst_path[MAX_CMD_SIZE];
     char cmd_db[MAX_CMD_SIZE];
     char cmd_dump[MAX_CMD_SIZE];
@@ -340,8 +357,13 @@ static int iterative_migration(struct migration_args *args)
     //int db_pattern[7] = {1000, 1000, 1000, 1000, 1000, 1000}; // Pattern 1
     int db_pattern[6] = {1000, 500, 250, 125, 75, 25}; // Pattern 2
     //int db_pattern[6] = {1000, 1000, 1000, 1000, 1000, 1000}; // Pattern 1
-    char *fmt_cmd_dump = "sudo runc checkpoint --pre-dump --image-path %s \
-                          --auto-dedup --parent-path %s --page-server %s:%s %s";
+    /* --track-mem is turned on by default if --parent-path is provided
+     * see: runc/libcontainer/container_linux.go#L1032
+     */
+    char *fmt_cmd_dump = "sudo runc checkpoint --pre-dump "
+                         "--image-path %s "
+                         "--parent-path %s "
+                         "--page-server %s:%s %s";
     char *fmt_cmd_symlink = "ln -s %s %s/parent";
 
     /* Start Iterative Page Dump 
@@ -359,7 +381,7 @@ static int iterative_migration(struct migration_args *args)
             gettimeofday(&t_ini, NULL);
         #endif
         printf("LOG: Iterative Migration --> Step %i.\n", i);
-        if (prepare_migration(args) != 0)
+        if (prepare_migration(args, i == 0) != 0)
         {
             fprintf(stderr, "iterative_migration: prepare migration failed at \
                              iteration %i.\n", i + 1);
@@ -368,11 +390,12 @@ static int iterative_migration(struct migration_args *args)
         memset(cmd_dump, '\0', MAX_CMD_SIZE);
         if (i == 0)
             sprintf(cmd_dump, "sudo runc checkpoint --pre-dump --image-path %s \
-                    --auto-dedup --page-server %s:%s %s", args->src_image_path, 
+                    --page-server %s:%s %s", args->src_image_path, 
                     args->dst_host, args->page_server_port, args->name);
         else
-            sprintf(cmd_dump, fmt_cmd_dump, args->src_image_path, old_src_path,
-                    args->dst_host, args->page_server_port, args->name);
+            sprintf(cmd_dump, fmt_cmd_dump, args->src_image_path,
+                    args->src_prev_image_dir, args->dst_host,
+                    args->page_server_port, args->name);
         fprintf(stdout, "DEBUG: dump command '%s'\n", cmd_dump);
         /* Finish Prepare Migration */
         #if BENCHMARK
@@ -401,7 +424,7 @@ static int iterative_migration(struct migration_args *args)
             gettimeofday(&t_ini, NULL);
         #endif
         if (sftp_copy_dir(args->session, args->dst_image_path, 
-                          args->src_image_path, 1, &dir_size) != SSH_OK)
+                          args->src_image_path, 0, &dir_size) != SSH_OK)
         {
             fprintf(stderr, "migration: error transferring from '%s' to '%s'\n",
                     args->src_image_path, args->dst_image_path);
@@ -422,6 +445,7 @@ static int iterative_migration(struct migration_args *args)
         #if BENCHMARK 
             gettimeofday(&t_ini, NULL);
         #endif
+        /* TODO remove
         if (i > 0)
         {
             memset(cmd_symlink, '\0', MAX_CMD_SIZE);
@@ -434,11 +458,22 @@ static int iterative_migration(struct migration_args *args)
                 return 1;
             }
         }
+        */
         /* Swap Dirs */
-        memset(old_src_path, '\0', MAX_CMD_SIZE);
-        strcpy(old_src_path, args->src_image_path);
-        memset(old_dst_path, '\0', MAX_CMD_SIZE);
-        strcpy(old_dst_path, args->dst_image_path);
+        const char s[4] = "/";
+        char *tok;
+        char tmp[100];
+        strcpy(tmp, args->dst_image_path);
+        tok = strtok(tmp, s);
+        tok = strtok(0, s);
+        tok = strtok(0, s);
+        sprintf(args->dst_prev_image_dir, "../%s", tok);
+        memset(tmp, '\0', 100);
+        strcpy(tmp, args->src_image_path);
+        tok = strtok(tmp, s);
+        tok = strtok(0, s);
+        tok = strtok(0, s);
+        sprintf(args->src_prev_image_dir, "../%s", tok);
         iterative_migration_inc_dirs(args, i);
         #if BENCHMARK
             gettimeofday(&t_end, NULL);
@@ -508,7 +543,7 @@ int migration(struct migration_args *args)
     #if BENCHMARK
         gettimeofday(&t_ini, NULL);
     #endif
-    if (prepare_migration(args) != 0)
+    if (prepare_migration(args, 0) != 0)
     {
         fprintf(stderr, "migration: prepare_migration failed.\n");
         if (clean_env(args) != 0)
@@ -523,8 +558,10 @@ int migration(struct migration_args *args)
     char cmd_rs[MAX_CMD_SIZE];
     memset(cmd_cp, '\0', MAX_CMD_SIZE);
     memset(cmd_rs, '\0', MAX_CMD_SIZE);
-    char *fmt_cp = "sudo runc checkpoint --image-path %s --page-server \
-                    %s:%s %s";
+    char *fmt_cp = "sudo runc checkpoint "
+                   "--parent-path ../criu-src-dir-4 "
+                   "--image-path %s "
+                   "--page-server %s:%s %s";
     char *fmt_rs = "cd %s && echo %s | sudo -S runc restore --image-path %s \
                     %s-restored &> /dev/null < /dev/null &";
     sprintf(cmd_cp, fmt_cp, args->src_image_path, args->dst_host,
@@ -557,10 +594,10 @@ int migration(struct migration_args *args)
         times[1] = timeval_to_milis(&t_result);
     #endif
 
-    /* Copy the Remaining Files (should be few as we are running diskless */
+    /* Copy the Remaining Files (should be few as we are running diskless) */
     gettimeofday(&t_ini, NULL);
     if (sftp_copy_dir(args->session, args->dst_image_path, 
-                      args->src_image_path, 1, &dir_size) != SSH_OK)
+                      args->src_image_path, 0, &dir_size) != SSH_OK)
     {
         fprintf(stderr, "migration: error transferring from '%s' to '%s'\n",
                 args->src_image_path, args->dst_image_path);
@@ -576,6 +613,17 @@ int migration(struct migration_args *args)
         timersub(&t_end, &t_ini, &t_result);
         times[2] = timeval_to_milis(&t_result);
     #endif
+
+    /* Add the symlink to the parent dir */
+    /* TODO Remove
+    char *cmd_symlink = "ln -s /dev/shm/criu-dst-dir-4 /dev/shm/criu-dst-dir-5/parent";
+    if (ssh_remote_command(args->session, cmd_symlink, 0) != SSH_OK)
+    {
+        fprintf(stderr, "migration: error creating symlink \
+                         w/ command: '%s'\n", cmd_symlink);
+        return 1;
+    }
+    */
 
     /* Restore the Running Container */
     #if BENCHMARK
