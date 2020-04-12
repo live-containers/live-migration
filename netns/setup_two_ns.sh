@@ -36,10 +36,11 @@ ip link set br-veth2 master br1
 
 # Add IP for the bridge
 # The '+' sets the host bits to 255 for the broadcast
-ip addr add 192.168.1.10/24 br + dev br1
+ip addr add 192.168.1.10/24 brd + dev br1
 
 # Add gateway route for the namespaces
-ip netns exec namespace1 ip route default via 192.168.1.10 dev veth1
+ip netns exec namespace1 ip route add default via 192.168.1.10 
+ip netns exec namespace2 ip route add default via 192.168.1.10
 
 # Add route in host's ip table to forward responses to any namespace's ip
 iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -j MASQUERADE
