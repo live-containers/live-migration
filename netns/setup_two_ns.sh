@@ -7,6 +7,10 @@
 ip netns add namespace1
 ip netns add namespace2
 
+# Bring up localhost interfaces
+ip netns exec namespace1 ip link set dev lo up
+ip netns exec namespace2 ip link set dev lo up
+
 # Create the two virtual ethernet pairs
 # br stands for the peer that will be on the bridge side
 ip link add veth1 type veth peer name br-veth1
