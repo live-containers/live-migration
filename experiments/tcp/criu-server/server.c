@@ -1,3 +1,7 @@
+#define _GNU_SOURCE
+#include <sched.h>
+
+#include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <signal.h>
@@ -65,11 +69,24 @@ static int serve_connection(int sockfd)
 
 int main(int argc, char *argv[])
 {
-    if (argc < 2)
+    if (argc < 3)
     {
-        fprintf(stderr, "you must provide at least two parameters\n");
+        fprintf(stderr, "usage: ./server <net_ns> <port>\n");
         goto exit;
     }
+    
+    /* Set Network Namespace */
+    char *netns_name;
+    // WARN: use snprintf in the future
+    sprintf(netns_name, "/var/run/netns/%s", argv[1]);
+    FILE *net_fd = fopen(netns_name, "r");
+    int fd = fileno(net_fd);
+    if (setns(fd, CLONE_NEWNET) != 0)
+    {
+        perror("setns failed");
+        return 1;
+    }
+
     int sockfd, port;
     unsigned int len;
     struct sockaddr_in servaddr, cli;
@@ -90,7 +107,7 @@ int main(int argc, char *argv[])
     memset(&servaddr, '\0', sizeof servaddr);
 
     //Assign IP, Port
-    port = atoi(argv[1]);
+    port = atoi(argv[2]);
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servaddr.sin_port = htons(port);

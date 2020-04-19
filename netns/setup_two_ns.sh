@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # Simulate a setting with two different network namespces (same IP) connected to a bridge
-# ref: https://ops.tips/blog/using-network-namespaces-and-bridge-to-isolate-servers/
+# refs: 
+#   - https://ops.tips/blog/using-network-namespaces-and-bridge-to-isolate-servers/
+#   - Sauvanaud et. al. "Interconnecting Netowrk Namespaces"
 
 # IP handles live at /var/run/netns
 ip netns add namespace1
@@ -24,23 +26,23 @@ ip link set veth2 netns namespace2
 ip netns exec namespace1 ip addr add 192.168.1.11/24 dev veth1
 ip netns exec namespace2 ip addr add 192.168.1.12/24 dev veth2
 
-# Setup the bridge
+# Setup the bridge to connect to the overlay network
 ip link add name br1 type bridge
-ip link set br1 up
-
-# Now bring up all the interfaces
-ip link set br-veth1 up
-ip link set br-veth2 up
-ip netns exec namespace1 ip link set veth1 up
-ip netns exec namespace2 ip link set veth2 up
-
-# Add bridge veth interfaces to the bridge
-ip link set br-veth1 master br1
-ip link set br-veth2 master br1
 
 # Add IP for the bridge
 # The '+' sets the host bits to 255 for the broadcast
 ip addr add 192.168.1.10/24 brd + dev br1
+ip link set br1 up
+
+# Now bring up all the interfaces
+ip netns exec namespace1 ip link set veth1 up
+ip netns exec namespace2 ip link set veth2 up
+
+# Add bridge veth interfaces to the bridge and bring them up
+ip link set br-veth1 master br1
+ip link set br-veth2 master br1
+ip link set br-veth1 up
+ip link set br-veth2 up
 
 # Add gateway route for the namespaces
 ip netns exec namespace1 ip route add default via 192.168.1.10 
