@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include <signal.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,25 +70,50 @@ static int serve_connection(int sockfd)
 
 int main(int argc, char *argv[])
 {
-    if (argc < 3)
+    if (argc < 2)
     {
         fprintf(stderr, "usage: ./server <net_ns> <port>\n");
-        goto exit;
-    }
-    
-    /* Set Network Namespace */
-    char *netns_name;
-    // WARN: use snprintf in the future
-    sprintf(netns_name, "/var/run/netns/%s", argv[1]);
-    FILE *net_fd = fopen(netns_name, "r");
-    int fd = fileno(net_fd);
-    if (setns(fd, CLONE_NEWNET) != 0)
-    {
-        perror("setns failed");
         return 1;
     }
+    
+    int port;
+    char *netns_name;
+    FILE *net_fd;
+    int fd;
+    if (argc == 3)
+    {
+        /* Set Network Namespace */
+        // WARN: use snprintf in the future
+        sprintf(netns_name, "/var/run/netns/%s", argv[1]);
+        net_fd = fopen(netns_name, "r");
+        if (net_fd == NULL)
+        {
+            perror("fopen failed");
+            return 1;
+        }
+        fd = fileno(net_fd);
+        if (setns(fd, CLONE_NEWNET) != 0)
+        {
+            perror("setns failed");
+            return 1;
+        }
+        struct stat file_stat;
+        if (fstat(fd, &file_stat) < 0)
+        {
+            perror("fstat failed");
+            return 1;
+        }
+        fprintf(stdout, "Netns: %s has fd -> %i and inode -> %li\n",
+                netns_name, fd, file_stat.st_ino);
+        port = atoi(argv[2]);
+    }
+    else
+    {
+        port = atoi(argv[1]);
+    }
 
-    int sockfd, port;
+
+    int sockfd;
     unsigned int len;
     struct sockaddr_in servaddr, cli;
 
@@ -107,7 +133,6 @@ int main(int argc, char *argv[])
     memset(&servaddr, '\0', sizeof servaddr);
 
     //Assign IP, Port
-    port = atoi(argv[2]);
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servaddr.sin_port = htons(port);

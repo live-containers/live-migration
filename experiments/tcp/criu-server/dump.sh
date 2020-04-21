@@ -5,5 +5,6 @@ sudo criu dump -v4 \
     -t $SERVER_PPID \
     --images-dir images/1 \
     --work-dir logs \
+    --external net\[$1\]:netns1 \
     --shell-job \
     --tcp-established
