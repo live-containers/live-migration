@@ -77,7 +77,8 @@ int main(int argc, char *argv[])
     }
     
     int port;
-    char *netns_name;
+    char *netns_name = (char *) malloc(128);
+    memset(netns_name, '\0', 128);
     FILE *net_fd;
     int fd;
     if (argc == 3)
@@ -92,6 +93,11 @@ int main(int argc, char *argv[])
             return 1;
         }
         fd = fileno(net_fd);
+        if (fd == -1)
+        {
+            perror("fileno failed");
+            return 1;
+        }
         if (setns(fd, CLONE_NEWNET) != 0)
         {
             perror("setns failed");
@@ -106,6 +112,7 @@ int main(int argc, char *argv[])
         fprintf(stdout, "Netns: %s has fd -> %i and inode -> %li\n",
                 netns_name, fd, file_stat.st_ino);
         port = atoi(argv[2]);
+        fclose(net_fd);
     }
     else
     {
@@ -123,6 +130,7 @@ int main(int argc, char *argv[])
     sa.sa_handler = &int_handler;
     sigaction(SIGINT, &sa, NULL);
 
+    /*
     sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sockfd == -1)
     {
@@ -151,8 +159,11 @@ int main(int argc, char *argv[])
     }
     fprintf(stdout, "listening...\n");
 
+    */
     while (keep_running)
     {
+        sleep(10);
+        /*
         int pid, connfd;
         memset(&cli, '\0', sizeof cli);
         len = sizeof(struct sockaddr_in);
@@ -184,10 +195,11 @@ int main(int argc, char *argv[])
             close(connfd);
             exit(0); 
         }
+        */
     }
     goto exit;
 
 exit:
-    close(sockfd);
+    //close(sockfd);
     return 0;
 }
