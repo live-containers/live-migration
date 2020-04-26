@@ -197,7 +197,8 @@ static int init_migration(struct migration_args *args)
 {
     args->name = "eureka";
     args->iterative = 1;
-    args->dst_host = VM2_IP;
+    //args->dst_host = VM2_IP;
+    args->dst_host = VM1_IP;
     args->dst_user = "carlos";
     args->page_server_host = "127.0.0.1";
     args->page_server_port = PAGE_SERVER_PORT;
@@ -561,6 +562,7 @@ int migration(struct migration_args *args)
     char *fmt_cp = "sudo runc checkpoint "
                    "--parent-path ../criu-src-dir-4 "
                    "--image-path %s "
+                   "--tcp-established "
                    "--page-server %s:%s %s";
     char *fmt_rs = "cd %s && echo %s | sudo -S runc restore --image-path %s \
                     %s-restored &> /dev/null < /dev/null &";
@@ -677,11 +679,13 @@ int main(int argc, char *argv[])
     }
 
     /* DEBUG: Start Container */
+    /*
     if (launch_container(EXPERIMENT_REDIS, "10") != 0)
     {
         fprintf(stderr, "main: launch_container failed.\n");
         return 1;
     }
+    */
 
     /* Argument Initialization */
     struct migration_args *args;
