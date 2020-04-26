@@ -1,0 +1,5 @@
+----------
+1: lo: <LOOPBACK> mtu 65536 qdisc noop state DOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+2: veth1@if11: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+    link/ether 66:08:06:f7:3c:10 brd ff:ff:ff:ff:ff:ff link-netnsid 0
