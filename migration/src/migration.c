@@ -25,6 +25,7 @@ struct migration_args {
     char *log_file;
 };
 
+/* Check if a runc container is running given it's name */
 static int check_container_running(char *container_name)
 {
     FILE *fp;
@@ -52,6 +53,7 @@ static int check_container_running(char *container_name)
     return 0;
 }
 
+/* Print the usage message, currently OUTDATED FIXME */
 static int usage(char *file_name)
 {
     printf("Usage: %s\n", file_name);
@@ -122,6 +124,7 @@ static int parse_args(int argc, char *argv[], struct migration_args *args)
     return 0;
 }
 
+/* Helper method to launch a runc container with a given workload */
 static int launch_container(int experiment, char *experiment_tag)
 {
     char cmd[MAX_CMD_SIZE];
@@ -197,8 +200,7 @@ static int init_migration(struct migration_args *args)
 {
     args->name = "eureka";
     args->iterative = 1;
-    //args->dst_host = VM2_IP;
-    args->dst_host = VM1_IP;
+    args->dst_host = VM2_IP;
     args->dst_user = "carlos";
     args->page_server_host = "127.0.0.1";
     args->page_server_port = PAGE_SERVER_PORT;
@@ -679,13 +681,11 @@ int main(int argc, char *argv[])
     }
 
     /* DEBUG: Start Container */
-    /*
     if (launch_container(EXPERIMENT_REDIS, "10") != 0)
     {
         fprintf(stderr, "main: launch_container failed.\n");
         return 1;
     }
-    */
 
     /* Argument Initialization */
     struct migration_args *args;
