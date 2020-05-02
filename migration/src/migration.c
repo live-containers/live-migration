@@ -10,6 +10,7 @@
  * 5. Use gotos for error reporting
  */
 
+/* Structure to store all migration-related arguments */
 struct migration_args {
     ssh_session session;
     char *name;
@@ -179,17 +180,28 @@ static int launch_container(int experiment, char *experiment_tag)
 /* Clean the working environment once we are done. */
 static int clean_env(struct migration_args *args)
 {
-    // TODO remove page-dir still alive in the remote end
-    char rm_cmd[MAX_CMD_SIZE];
-    memset(rm_cmd, '\0', MAX_CMD_SIZE);
+    char local_rm_cmd[MAX_CMD_SIZE];
+    char remote_rm_cmd[MAX_CMD_SIZE];
+    memset(local_rm_cmd, '\0', MAX_CMD_SIZE);
+    memset(remote_rm_cmd, '\0', MAX_CMD_SIZE);
     if (args->iterative)
-        //sprintf(rm_cmd, "rm -rf /dev/shm/criu-dst-*");
-        printf("Delete me!\n");
+    {
+        sprintf(local_rm_cmd, "sudo rm -rf /dev/shm/criu-src-*");
+        sprintf(remote_rm_cmd, "rm -rf /dev/shm/criu-dst-*");
+    }
     else
-        sprintf(rm_cmd, "rm -r %s", args->dst_image_path);
-    if (ssh_remote_command(args->session, rm_cmd, 0) != SSH_OK)
+    {
+        sprintf(local_rm_cmd, "sudo rm -r %s", args->src_image_path);
+        sprintf(remote_rm_cmd, "rm -r %s", args->dst_image_path);
+    }
+    if (ssh_remote_command(args->session, remote_rm_cmd, 0) != SSH_OK)
     {
         fprintf(stderr, "clean_env: removing remote directory during cleanup failed.\n");
+        return 1;
+    }
+    if (system(local_rm_cmd) != 0)
+    {
+        fprintf(stderr, "clean_env: removing local dirs during cleanup failed.\n");
         return 1;
     }
     return 0;
@@ -336,10 +348,8 @@ static int iterative_migration(struct migration_args *args)
     #endif
     
     /* Initialize the Recurrent Command we will Issue */
-    char old_dst_path[MAX_CMD_SIZE];
     char cmd_db[MAX_CMD_SIZE];
     char cmd_dump[MAX_CMD_SIZE];
-    char cmd_symlink[MAX_CMD_SIZE];
     /* FIXME fix this when a more realistic experiment is set */
     FILE *fp;
     char redis_ip[32];
@@ -367,7 +377,6 @@ static int iterative_migration(struct migration_args *args)
                          "--image-path %s "
                          "--parent-path %s "
                          "--page-server %s:%s %s";
-    char *fmt_cmd_symlink = "ln -s %s %s/parent";
 
     /* Start Iterative Page Dump 
      *
@@ -448,20 +457,7 @@ static int iterative_migration(struct migration_args *args)
         #if BENCHMARK 
             gettimeofday(&t_ini, NULL);
         #endif
-        /* TODO remove
-        if (i > 0)
-        {
-            memset(cmd_symlink, '\0', MAX_CMD_SIZE);
-            sprintf(cmd_symlink, fmt_cmd_symlink, old_dst_path,
-                    args->dst_image_path);
-            if (ssh_remote_command(args->session, cmd_symlink, 0) != SSH_OK)
-            {
-                fprintf(stderr, "iterative_migration: error creating symlink \
-                                 w/ command: '%s'\n", cmd_symlink);
-                return 1;
-            }
-        }
-        */
+
         /* Swap Dirs */
         const char s[4] = "/";
         char *tok;
@@ -489,14 +485,12 @@ static int iterative_migration(struct migration_args *args)
         memset(cmd_db, '\0', MAX_CMD_SIZE);
         sprintf(cmd_db, fmt_cmd_db, RUNC_REDIS_PATH, redis_ip, db_pattern[i],
                 redis_ip, i);
-        /*
         if (system(cmd_db) != 0)
         {
             fprintf(stderr, "iterative_migration: db command %s failed.\n",
                     cmd_db);
             return 1;
         }
-        */
 
         /* Holdback time. FIXME how to choose this? */
         sleep(1);
@@ -618,17 +612,6 @@ int migration(struct migration_args *args)
         times[2] = timeval_to_milis(&t_result);
     #endif
 
-    /* Add the symlink to the parent dir */
-    /* TODO Remove
-    char *cmd_symlink = "ln -s /dev/shm/criu-dst-dir-4 /dev/shm/criu-dst-dir-5/parent";
-    if (ssh_remote_command(args->session, cmd_symlink, 0) != SSH_OK)
-    {
-        fprintf(stderr, "migration: error creating symlink \
-                         w/ command: '%s'\n", cmd_symlink);
-        return 1;
-    }
-    */
-
     /* Restore the Running Container */
     #if BENCHMARK
         gettimeofday(&t_ini, NULL);
@@ -653,7 +636,7 @@ int migration(struct migration_args *args)
 
     #if BENCHMARK
         FILE *fp;
-        fp = fopen("../../benchmarking/iterative-migration/redis/benchmark_loop.dat", "a");
+        fp = fopen("../../benchmarking/macro-benchmarks/iterative-remote-diskless/benchmark_loop.dat", "a");
         fprintf(fp, "-1\t%.2f", dir_size);
         for (int i = 0; i <= NUM_PROFILING_EVENTS; i++)
             fprintf(fp, "\t%.2f", times[i]);

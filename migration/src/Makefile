@@ -5,6 +5,8 @@ LD_ADD = -lssh -lpthread -lrt -lcrypto -lz -ldl -lm #${LIBSSH}
 BENCH = -DBENCHMARK=1
 #INC =-I. -I../lib/libssh-0.9.3/include
 
+all: migration
+
 migration: migration.o net_utils.o time_utils.o
 	${CC} ${CFLAGS} ${INC} -o migration migration.o net_utils.o time_utils.o ${LD_ADD}
 
