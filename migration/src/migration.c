@@ -348,7 +348,6 @@ static int iterative_migration(struct migration_args *args)
     #endif
     
     /* Initialize the Recurrent Command we will Issue */
-    char old_dst_path[MAX_CMD_SIZE];
     char cmd_db[MAX_CMD_SIZE];
     char cmd_dump[MAX_CMD_SIZE];
     /* FIXME fix this when a more realistic experiment is set */
@@ -486,14 +485,12 @@ static int iterative_migration(struct migration_args *args)
         memset(cmd_db, '\0', MAX_CMD_SIZE);
         sprintf(cmd_db, fmt_cmd_db, RUNC_REDIS_PATH, redis_ip, db_pattern[i],
                 redis_ip, i);
-        /*
         if (system(cmd_db) != 0)
         {
             fprintf(stderr, "iterative_migration: db command %s failed.\n",
                     cmd_db);
             return 1;
         }
-        */
 
         /* Holdback time. FIXME how to choose this? */
         sleep(1);
@@ -639,7 +636,7 @@ int migration(struct migration_args *args)
 
     #if BENCHMARK
         FILE *fp;
-        fp = fopen("../../benchmarking/iterative-migration/redis/benchmark_loop.dat", "a");
+        fp = fopen("../../benchmarking/macro-benchmarks/iterative-remote-diskless/benchmark_loop.dat", "a");
         fprintf(fp, "-1\t%.2f", dir_size);
         for (int i = 0; i <= NUM_PROFILING_EVENTS; i++)
             fprintf(fp, "\t%.2f", times[i]);
