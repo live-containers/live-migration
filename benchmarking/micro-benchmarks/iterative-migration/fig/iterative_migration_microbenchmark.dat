@@ -1,0 +1,9 @@
+1.5 92 12 12 #criu counter without increasing (KB)
+5 92 12 12 #runc counter without increasing (KB)
+9 96 24 24 #criu counter increasing (KB)
+12.5 92 24 24 #runc counter increasing (KB)
+
+16.5 986 4.1 4.1 #criu redis non-shuffling (MB)
+20 906 2.1 2.1 #runc redis non-shuffling (MB)
+24 986 166.8 24 #criu redis shuffling (avg MB)
+27.5 906 349.85 21 #runc redis shuffling (avg MB)

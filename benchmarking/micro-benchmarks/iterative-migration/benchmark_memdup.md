@@ -74,8 +74,14 @@ spec: 1.0.1-dev
     + Ratio: 13%
 
 3. Redis without shuffling:
+    + Dir 1: 986M
+    + Dir 2: 4.1M
+    + Dir 3: 4.1M
 
 4. Redis with shuffling:
+    + Dir 1: 986M
+    + Dir 2: 665M,51M,36M,33M,49M
+    + Dir 3: 27M,20M,24M,24M,26M
 
 + Observations:
     + Every time you do a pre-dump or a dump, the process is frozen and if it was in the middle of, for instance, a sleep, it will resume outside of the sleep.
