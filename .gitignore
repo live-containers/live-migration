@@ -2,4 +2,6 @@ old
 tags
 rootfs
 images
+src-images
+dst-images
 *.img
