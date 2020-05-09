@@ -43,7 +43,7 @@ spec: 1.0.1-dev
   + Non-diskless:
 
 3. Redis local:
-  + Diskless:
+  + Diskless: 897.10 ms (161.26)
   + Non-diskless:
 
 4. Redis remote:
