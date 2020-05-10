@@ -1,0 +1,11 @@
+# counter (time in ms)
+1.5 347.03 20.22 376.05 20.85 95.93 6.11 #criu local (diskless, non-diskless w/ page-server, w/out page server) avg/stdev
+5 305.08 312.47 8.51 121.17 3.37 #runc local 
+9 477.01 93.11 538.08 57.63 285.04 16.24 #criu remote 
+12.5 511.57 41.08 554.98 21.06 408.25 20.05 #runc remote
+
+# redis
+16.5 0 0 0 0 0 0 #criu local
+20 897.10 161.26 9813.24 683.2 13720 1041 #runc local
+24 3435.70 121.61 4397.80 345.45 25523.80 1640.68 #criu remote
+27.5 3859.98 1235.72 4175 259.23 19932.93 1020 #runc remote
