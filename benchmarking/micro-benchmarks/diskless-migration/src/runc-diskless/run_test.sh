@@ -1,13 +1,13 @@
 #!/bin/bash
 HOME=$(pwd)
 IP=192.168.56.103
-NUM_TESTS=100
+NUM_TESTS=10
 acc=0
 acc2=0
 for (( i=1; i<=$NUM_TESTS; i++ ))
 do
-    cd /home/carlos/runc-containers/counter/ && sudo ./run.sh && cd $HOME
-    #cd /home/carlos/runc-containers/redis/ && sudo ./run_redis.sh 10000000 && cd $HOME
+    #cd /home/carlos/runc-containers/counter/ && sudo ./run.sh && cd $HOME
+    cd /home/carlos/runc-containers/redis/ && sudo ./run_redis.sh 10000000 && cd $HOME
     sudo ./clean.sh
     #sudo ./page_server.sh &
     #ssh carlos@${IP} "/home/carlos/runc-diskless/page_server.sh &> /dev/null < /dev/null &"

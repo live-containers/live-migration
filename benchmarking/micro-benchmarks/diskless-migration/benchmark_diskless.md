@@ -36,21 +36,25 @@ spec: 1.0.1-dev
 
 1. Counter local:
   + Diskless: 305.08 ms (14.59)
+  + Diskless w/out page-server: 139 ms (3.37)
   + Non-diskless w/ page-server: 312.47 ms (8.51)
-  + Non-diskless w/out page-server: 121.17 ms (3.37)
+  + Non-diskless w/out page-server: 162.17 ms (3.37)
 
 2. Counter remote:
   + Diskless: 511.57 ms (41.08)
+  + Diskless w/out page-server: 410 ms (55)
   + Non-diskless w/ page-server: 554.98 ms (21.06)
   + Non-diskless w/out page-server: 408.25
 
 3. Redis local:
   + Diskless: 897.10 ms (161.26)
+  + Diskless w/out page-server: 2847.50 ms (1087.23)
   + Non-diskless w/ page-server: 9813.24 ms (683.20)
   + Non-diskless w/out page-server: 13720.00 (1041.741)
 
 4. Redis remote:
   + Diskless: 3859.98 ms (1235.72)
+  + Diskless w/out page-server: 9304.3 ms (1377)
   + Non-diskless w/ page-server: 4175 ms (259.34)
   + Non-diskless w/out page-server: 19932.92
 
@@ -60,21 +64,25 @@ spec: 1.0.1-dev
 
 1. Counter local:
   + Diskless: 347.03 ms (20.22)
+  + Diskless w/out page-server: 78.30 ms (4.49)
   + Non-diskless w/ page-server: 376.05 ms (20.85)
   + Non-diskless w/out page-server: 95.93 ms (6.11)
 
 2. Counter remote:
   + Diskless: 477.01 ms (93.11)
+  + Diskless w/out page-server: 369 ms (17.83)
   + Non-diskless w/ page-server: 538.08 ms (57.63)
   + Non-diskless w/out page-server: 385.04 ms (16.24)
 
 3. Redis local:
-  + Diskless: 
-  + Non-diskless w/ page-server: 
-  + Non-diskless w/out page-server:
+  + Diskless: 893.30 ms (107.32)
+  + Diskless w/out page-server: 793.190 (60.77)
+  + Non-diskless w/ page-server: 10458.00 ms (323.81)
+  + Non-diskless w/out page-server: 13862.50 (416.14)
 
 4. Redis remote:
   + Diskless: 3435.70 ms (121.61)
+  + Diskless w/out page-server: 9253.90 ms (778.62)
   + Non-diskless w/ page-server: 4397.80 (345.45)
   + Non-diskless w/out page-server: 25523.80 (1640.68)
 
