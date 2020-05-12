@@ -13,6 +13,7 @@ set lmargin 6
 # Tics and labels
 set tic scale 0
 set xrange [-0.25:29.25]
+set grid y
 set ytics (20, 40, 60, 80)
 set y2tics (200, 400, 600, 800)
 set yrange [0:100]
