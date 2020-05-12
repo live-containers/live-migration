@@ -11,7 +11,7 @@ set rmargin 8
 set lmargin 6
 
 # Tics and labels
-set tic scale 0
+set xtic scale 0
 set xrange [-0.25:29.25]
 set grid y
 set ytics (20, 40, 60, 80)
