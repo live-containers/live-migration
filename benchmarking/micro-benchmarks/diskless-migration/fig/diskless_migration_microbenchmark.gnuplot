@@ -39,7 +39,7 @@ plot 'diskless_migration_microbenchmark.dat' \
     '' using ($1+0.5):($6/1000) every :::0::0 w boxes lc rgb "#8803FD" title "File-Based w/ Page-Server",\
     '' using ($1+0.5):($6/1000):($7/1000) every :::0::0 w yerrorbars lc rgb "#8803FD" notitle,\
     '' using ($1+1.5):($8/1000) every :::0::0 w boxes lc rgb "#BC1B36" title "File-Based w/out Page-Server",\
-    '' using ($1+1.5):($8/1000):($9/1000) every :::0::0 w yerrorbars lc rgb "#BC1B36" axes x1y2 notitle,\
+    '' using ($1+1.5):($8/1000):($9/1000) every :::0::0 w yerrorbars lc rgb "#BC1B36" notitle,\
     '' using ($1-1.5):($2/1000) every :::1::1 w boxes lc rgb "#fd9103" axes x1y2 notitle,\
     '' using ($1-1.5):($2/1000):($3/1000) every :::1::1 w yerrorbars lc rgb "#fd9103" axes x1y2 notitle,\
     '' using ($1-0.5):($4/1000) every :::1::1 w boxes lc rgb "#f05e16" axes x1y2 notitle,\
