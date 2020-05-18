@@ -31,7 +31,7 @@ echo "Dumping server..."
 sudo criu dump \
     -t ${SERVER_PID} \
     --images-dir ${IMAGES_DIR} \
-    --tcp-established
+    --tcp-established &
 
 sleep 2
 
