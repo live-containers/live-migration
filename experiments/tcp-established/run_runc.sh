@@ -3,20 +3,16 @@
 CLIENT_IP=192.168.56.103
 IPERF3=/home/carlos/iperf/src/iperf3
 LOG_DIR=./iperf3-log
-IMAGES_DIR=./images
+IMAGES_DIR=/home/carlos/criu-lm/experiments/tcp-established/images
+CWD=$(pwd)
 
 # Set up Environment
 mkdir -p ${LOG_DIR}
 
 # Run iPerf3 server
-echo "Bootstrapping Server..."
-setsid ${IPERF3} \
-    -s --port 9999 \
-    --json \
-    --interval 0.1 \
-    --logfile ${LOG_DIR}/server.json \
-    --one-off &> /dev/null < /dev/null &
-SERVER_PID=$!
+cd /home/carlos/runc-containers/iperf3-server
+sudo runc run eureka &> /dev/null < /dev/null &
+cd ${CWD}
 
 sleep 3
 
@@ -28,18 +24,21 @@ sleep 10
 
 # CRIU Dump
 echo "Dumping server..."
-sudo criu dump \
-    -t ${SERVER_PID} \
-    --images-dir ${IMAGES_DIR} \
-    --tcp-established
+sudo runc checkpoint \
+    --image-path ${IMAGES_DIR} \
+    --tcp-established \
+    eureka
 
 sleep 2
 
 # CRIU Restore
 echo "Restoring server..."
-sudo criu restore \
-    --images-dir ${IMAGES_DIR} \
-    --tcp-established
+cd /home/carlos/runc-containers/iperf3-server 
+sudo runc restore \
+    --image-path ${IMAGES_DIR} \
+    --tcp-established \
+    eureka-restored
+cd ${CWD}
 
 # Get client data
 sleep 1

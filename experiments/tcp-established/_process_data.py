@@ -3,8 +3,8 @@ import json
 def process_data():
     ## Client data
     log_file = open('./client.dat', 'w')
-    #data_file = open('./iperf3-log/client.json')
-    data_file = open('./log4.log')
+    data_file = open('./iperf3-log/client.json')
+    #data_file = open('./log2.log')
     data = json.load(data_file)
     for interval in data['intervals']:
         _ts = interval['sum']['start']
