@@ -129,9 +129,8 @@ ${CRIU} dump \
 cat images/dump.log | grep -B 5 Error || echo "DEBUG: Dump ok"
 
 # TODO: Migrate from Net-NS 1 to Net-NS 2
-# nsenter -t ${PID_1} --net=${NS_1} ip addr del ${IP_1}/24 dev ${VETH_1}
-# nsenter -t ${PID_2} --net=${NS_2} ip addr add ${IP_1}/24 dev ${VETH_2}
-# nsenter -t ${PID_2} --net=${NS_2} ip route add default via ${HOST_IP}
+nsenter -t ${PID_1} --net=${NS_1} ip addr del ${IP_1}/24 dev ${VETH_1}
+nsenter -t ${PID_2} --net=${NS_2} ip addr add ${IP_1}/24 dev ${VETH_2}
 
 read -n 1 -s -r -p "CONTROL: Press any key to Restore\n"
 
@@ -141,8 +140,10 @@ ${CRIU} restore \
     -o restore.log \
     -D images \
     --tcp-established \
-    --inherit-fd fd[33]:${NS_1} \
-    --inherit-fd fd[34]:${NS_2} -d
+    --inherit-fd fd[33]:${NS_2} \
+    --inherit-fd fd[34]:${NS_1} -d
+    #--inherit-fd fd[33]:${NS_1} \
+    #--inherit-fd fd[34]:${NS_2} -d
 cat images/restore.log | grep -B 5 Error || echo "DEBUG: Restore ok"
 
 CR_INO_1=$(ls -iL /proc/${PID_1}/ns/net | awk '{ print $1 }')
