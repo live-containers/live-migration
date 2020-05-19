@@ -1,7 +1,7 @@
 #!/usr/bin/gnuplot
 #load "styles.inc"
 set terminal postscript color eps enhanced font 22 size 6,2
-set output 'tcp_established_downtime_microbenchmark.eps'
+set output 'tcp_established_resolution_microbenchmark.eps'
 set datafile separator " "
 
 # Tics and labels
@@ -30,5 +30,5 @@ set key at screen 0.97,screen 1.00 vertical maxrows 1 sample 1.2
 plot 'criu_client.dat' using 1:($2 * 10 / 1024 * 8) w lp lc rgb "#fd9103" title "criu" ,\
      'runc_client.dat' using 1:($2 * 10 / 1024 * 8) w lp lc rgb "#BC1B36" title "runc"
 
-!epstopdf 'tcp_established_downtime_microbenchmark.eps'
-!rm 'tcp_established_downtime_microbenchmark.eps'
+!epstopdf 'tcp_established_resolution_microbenchmark.eps'
+!rm 'tcp_established_resolution_microbenchmark.eps'
