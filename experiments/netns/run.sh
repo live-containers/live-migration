@@ -34,7 +34,6 @@ clean () {
     SLEEP="_sleep.sh"
     sudo rm -f output1 output2 pidfile1 pidfile2 
     sudo rm -f *.log
-    sudo rm -f ip1
     sudo rm -fr images
     sudo umount $NS_1 || /bin/true
     sudo umount $NS_2 || /bin/true
@@ -129,8 +128,10 @@ ${CRIU} dump \
 cat images/dump.log | grep -B 5 Error || echo "DEBUG: Dump ok"
 
 # TODO: Migrate from Net-NS 1 to Net-NS 2
-nsenter -t ${PID_1} --net=${NS_1} ip addr del ${IP_1}/24 dev ${VETH_1}
-nsenter -t ${PID_2} --net=${NS_2} ip addr add ${IP_1}/24 dev ${VETH_2}
+#nsenter -t ${PID_1} --net=${NS_1} ip link set ${VETH_1} down
+#nsenter -t ${PID_1} --net=${NS_1} ip addr del ${IP_1}/24 dev ${VETH_1}
+#nsenter -t ${PID_2} --net=${NS_2} ip addr add ${IP_1}/24 dev ${VETH_2}
+#nsenter -t ${PID_2} --net=${NS_2} ip link set ${VETH_2} up
 
 read -n 1 -s -r -p "CONTROL: Press any key to Restore\n"
 
@@ -140,11 +141,20 @@ ${CRIU} restore \
     -o restore.log \
     -D images \
     --tcp-established \
-    --inherit-fd fd[33]:${NS_2} \
-    --inherit-fd fd[34]:${NS_1} -d
-    #--inherit-fd fd[33]:${NS_1} \
-    #--inherit-fd fd[34]:${NS_2} -d
+    --inherit-fd fd[33]:${NS_1} \
+    --inherit-fd fd[34]:${NS_2} -d
 cat images/restore.log | grep -B 5 Error || echo "DEBUG: Restore ok"
+
+# Restore in a different namespace
+#${CRIU} restore \
+#    -v${LOG_LEVEL} \
+#    -o restore.log \
+#    -D images \
+#    --tcp-established \
+#    --inherit-fd fd[33]:${NS_1} \
+#    --inherit-fd fd[34]:${NS_2} \
+#    --external net[${NS_2}]:$(pwd)${NS_2} -d
+#cat images/restore.log | grep -B 5 Error || echo "DEBUG: Restore ok"
 
 CR_INO_1=$(ls -iL /proc/${PID_1}/ns/net | awk '{ print $1 }')
 CR_INO_2=$(ls -iL /proc/${PID_2}/ns/net | awk '{ print $1 }')
@@ -157,4 +167,7 @@ CR_INO_2=$(ls -iL /proc/${PID_2}/ns/net | awk '{ print $1 }')
 	exit 1
 }
 echo "DEBUG: C/R OK"
+
+#read -n 1 -s -r -p "CONTROL: Press any key to Finish\n"
+
 exit 0
