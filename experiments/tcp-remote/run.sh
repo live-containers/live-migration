@@ -36,14 +36,14 @@ sudo criu dump \
 sleep 2
 
 # CRIU Restore
-echo "Restoring server..."
-sudo criu restore \
-    --images-dir ${IMAGES_DIR} \
-    --tcp-established
-
-# Get client data
-sleep 1
-echo "Getting client results..."
+#echo "Restoring server..."
+#sudo criu restore \
+#    --images-dir ${IMAGES_DIR} \
+#    --tcp-established
+#
+## Get client data
+#sleep 1
+#echo "Getting client results..."
 #scp carlos@192.168.56.103:tcp-established/iperf3-log/client.json ./iperf3-log/
 
 # Process data

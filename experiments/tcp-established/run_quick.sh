@@ -57,10 +57,10 @@ echo "Dumping server for the last time..."
 (sudo criu dump \
     -t ${SERVER_PID} \
     --images-dir ${IMAGES_DIR} \
-    --tcp-established; \
-echo "Restoring server..."; \
-sudo criu restore \
-    --images-dir ${IMAGES_DIR} \
-    --tcp-established)
+    --tcp-established; )
+#echo "Restoring server..."; \
+#sudo criu restore \
+#    --images-dir ${IMAGES_DIR} \
+#    --tcp-established)
 
 echo "Finished!"
