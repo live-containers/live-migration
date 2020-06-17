@@ -65,5 +65,4 @@ sudo runc restore \
     eureka; \
 cd ${CWD})
 
-
 echo "Finished!"
