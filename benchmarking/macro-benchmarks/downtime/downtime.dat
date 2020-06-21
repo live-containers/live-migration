@@ -1,0 +1,14 @@
+=======================================================================================
+			redis-benchmark experiment
+Columns:
+	- iter: itertion number in the migration (-1 === last).
+	- dump: size of the local dump files (inventory.img) in kB.
+	- prep: time to create dirs and start page server (ms).
+	- pre-d: time to run the pre-dump command (ms).
+	- xfer: time to transfer intermediate files (ms).
+	- clean: time to cleanup the environment (ms).
+	- restore: time to restore the container (only last iteration) (ms).
+=======================================================================================
+iter	dump	prep	pre-d	xfer	clean	restore(ms)
+0	0.02	128.00	506.00	65.00	0.00
+-1	14.16	94.00	330.00	88.00	0.00	3.00

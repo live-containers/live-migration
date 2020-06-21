@@ -133,7 +133,7 @@ static int launch_container(int experiment, char *experiment_tag)
     switch (experiment)
     {
         case EXPERIMENT_REDIS:
-            sprintf(cmd, "cd %s && ./run.sh",
+            sprintf(cmd, "cd %s && ./run.sh 1000000",
                     RUNC_REDIS_PATH);            
             if (system(cmd) != 0)
             {
@@ -227,6 +227,7 @@ static int init_migration(struct migration_args *args)
     args->dst_prev_image_dir = (char *) malloc(MAX_CMD_SIZE * sizeof(char));
     memset(args->dst_prev_image_dir, '\0', MAX_CMD_SIZE);
     args->session = ssh_start(args->dst_host, args->dst_user);
+    fprintf(stdout, "init_migration: finished succesfully\n");
     return 0;
 }
 
@@ -313,7 +314,7 @@ static int iterative_migration_inc_dirs(struct migration_args *args, int level)
 static int iterative_migration(struct migration_args *args)
 {
     /* Initialize the Experiment Benchmarking */
-    const int num_test_dumps = 5;
+    const int num_test_dumps = 1;
     #if BENCHMARK
         double *times; // Stored in ms
         times = (double *) malloc(NUM_PROFILING_EVENTS * sizeof(double));
@@ -325,7 +326,7 @@ static int iterative_migration(struct migration_args *args)
         }
         struct timeval t_ini, t_end, t_result;
         FILE *data_fp;
-        data_fp = fopen("../../benchmarking/iterative-migration/redis/benchmark_loop.dat", "w");
+        data_fp = fopen("../../benchmarking/macro-benchmarks/downtime/downtime.dat", "w");
         fprintf(data_fp, "================================================"
                          "=======================================\n"
                          "\t\t\tredis-benchmark experiment\n"
@@ -365,10 +366,14 @@ static int iterative_migration(struct migration_args *args)
     }
     fclose(fp);
     /* FIXME Delete Until Here */
+    /*
     char *fmt_cmd_db = "cd %s && redis-benchmark -h %s -n %i -q && redis-cli \
                         -h %s SET iter iter%i";
+                        */
+    char *fmt_cmd_db = "cd %s && ./run.sh %i";
     //int db_pattern[7] = {1000, 1000, 1000, 1000, 1000, 1000}; // Pattern 1
-    int db_pattern[6] = {1000, 500, 250, 125, 75, 25}; // Pattern 2
+    //int db_pattern[6] = {100000, 100000, 100000, 100000, 100000, 100000}; // Pattern 2
+    int db_pattern[2] = {250000, 1000000}; // Pattern 2
     //int db_pattern[6] = {1000, 1000, 1000, 1000, 1000, 1000}; // Pattern 1
     /* --track-mem is turned on by default if --parent-path is provided
      * see: runc/libcontainer/container_linux.go#L1032
@@ -383,7 +388,7 @@ static int iterative_migration(struct migration_args *args)
      * TODO Determine what threshold to use to trigger another iteration.
      * For the moment and for demonstrating purposes we just wait 3 seconds.
      */
-    for (int i = 0; i <= num_test_dumps; i++)
+    for (int i = 0; i < num_test_dumps; i++)
     {
         #if BENCHMARK
             fprintf(data_fp, "%i", i);
@@ -483,8 +488,10 @@ static int iterative_migration(struct migration_args *args)
         /* Run DB Command and Wait */
         printf("DEBUG: Running Redis Benchmark.\n");
         memset(cmd_db, '\0', MAX_CMD_SIZE);
-        sprintf(cmd_db, fmt_cmd_db, RUNC_REDIS_PATH, redis_ip, db_pattern[i],
-                redis_ip, i);
+        //sprintf(cmd_db, fmt_cmd_db, RUNC_REDIS_PATH, redis_ip, db_pattern[i],
+        //        redis_ip, i);
+        sprintf(cmd_db, fmt_cmd_db, RUNC_REDIS_PATH, db_pattern[i]);
+        fprintf(stdout, "%s\n", cmd_db);
         if (system(cmd_db) != 0)
         {
             fprintf(stderr, "iterative_migration: db command %s failed.\n",
@@ -556,7 +563,7 @@ int migration(struct migration_args *args)
     memset(cmd_cp, '\0', MAX_CMD_SIZE);
     memset(cmd_rs, '\0', MAX_CMD_SIZE);
     char *fmt_cp = "sudo runc checkpoint "
-                   "--parent-path ../criu-src-dir-4 "
+                   "--parent-path ../criu-src-dir "
                    "--image-path %s "
                    "--tcp-established "
                    "--page-server %s:%s %s";
@@ -636,7 +643,7 @@ int migration(struct migration_args *args)
 
     #if BENCHMARK
         FILE *fp;
-        fp = fopen("../../benchmarking/macro-benchmarks/iterative-remote-diskless/benchmark_loop.dat", "a");
+        fp = fopen("../../benchmarking/macro-benchmarks/downtime/downtime.dat", "a");
         fprintf(fp, "-1\t%.2f", dir_size);
         for (int i = 0; i <= NUM_PROFILING_EVENTS; i++)
             fprintf(fp, "\t%.2f", times[i]);
@@ -664,7 +671,7 @@ int main(int argc, char *argv[])
     }
 
     /* DEBUG: Start Container */
-    if (launch_container(EXPERIMENT_REDIS, "10") != 0)
+    if (launch_container(EXPERIMENT_REDIS, "10000000") != 0)
     {
         fprintf(stderr, "main: launch_container failed.\n");
         return 1;

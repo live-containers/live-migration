@@ -1,0 +1,15 @@
+# See how downtime decreases as we vary the threshold of keys we modify
+# even line: overwrite %, raw downtime 
+# odd line: breakdown (dump, prep, pre-d, xfer, restore)
+100 690.15 
+100 3 14 71 11 1
+75 644.15
+75 2 12 70 14 2
+50 591.15
+50 2 14 63.5 18 2.5
+25 529.15
+25 3 17 62 16 2
+10 480.15
+10 3 18 60 17 2
+1 483.15
+1 3 20 60 16 1
