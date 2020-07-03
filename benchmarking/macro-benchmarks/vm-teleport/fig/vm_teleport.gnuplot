@@ -10,7 +10,7 @@ set boxwidth 0.85 relative
 
 set yrange [0:10]
 set xlabel "Number of Keys loaded to Redis" offset 15,0
-set ylabel "Execution Time [s]" offset 1.5, 0.0
+set ylabel "Time Elapsed [s]" offset 1.5, 0.0
 
 set multiplot layout 1,2 \
     margins 0.1, 0.99, 0.25, 0.8 \

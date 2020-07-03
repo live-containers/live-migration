@@ -14,7 +14,7 @@ set y2tics (0, 200, 400, 600)
 set grid y
 unset xtics
 set xlabel "Dump Threshold Relative to Initial Memory Size [%]" 
-set ylabel "Execution Time [%]" offset 1.5, 0.0
+set ylabel "Time Elapsed [%]" offset 1.5, 0.0
 set y2label "App. Downtime [ms]" offset -1, 0.0 rotate by 270
 #set xtics ("10^0" 0, "10^1" 1, "10^2" 2, "10^3" 3, "10^4" 4, "10^5" 5, "10^6" 6, "10^7" 7)
 set xtics 
